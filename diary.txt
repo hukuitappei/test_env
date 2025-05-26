@@ -1,0 +1,50 @@
+# Gitリポジトリを初期化してGitHubにプッシュする手順
+
+1. リポジトリの初期化
+```powershell
+git init
+```
+
+2. リモートリポジトリの追加（初回のみ）
+```powershell
+git remote add origin git@github.com:ユーザー名/リポジトリ名.git
+```
+または
+```powershell
+git remote add origin https://github.com/ユーザー名/リポジトリ名.git
+```
+
+3. ファイルをステージング
+```powershell
+git add .
+```
+
+4. 最初のコミット
+```powershell
+git commit -m "initial commit"
+```
+
+5. プッシュ（初回はmasterブランチ名に注意）
+```powershell
+git push -u origin master
+```
+
+※ `main` ではなく `master` になっている場合は、`master` を指定すること。
+
+---
+
+## よくあるエラーと対処法
+- `error: src refspec main does not match any`：
+  - ローカルブランチ名が `main` ではなく `master` になっている場合に発生。
+  - `git branch` で現在のブランチ名を確認し、正しいブランチ名でプッシュする。
+
+---
+
+## 参考：実際のコマンド例
+```
+git init
+git remote add origin https://github.com/hukuitappei/test_env.git
+git add .
+git commit -m "initial commit"
+git push -u origin master
+```
