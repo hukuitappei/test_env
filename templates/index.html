@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ボイスメモ帳</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-mode">
+    <div class="container">
+        <h1>ボイスメモ帳</h1>
+        <div class="controls">
+            <button id="recordButton">記録開始</button>
+            <button id="stopButton" disabled>記録停止</button>
+        </div>
+        <p id="status">準備完了</p>
+        <div id="recordingInfo">
+            <span id="recordingTime">00:00</span>
+            <canvas id="audioWave" width="200" height="50"></canvas>
+        </div>
+        <div id="transcriptionResult"></div>
+
+        <hr>
+
+        <h2>設定</h2>
+        <div class="settings">
+            <label for="autoRecordToggle">
+                <input type="checkbox" id="autoRecordToggle">
+                起動時に自動で記録を開始
+            </label>
+            <p>音声ファイルの分割長さ: 5分</p>
+        </div>
+
+        <hr>
+
+        <h2>過去のメモ</h2>
+        <ul id="transcriptionList">
+            <!-- 文字起こしファイルがここに動的に表示されます -->
+        </ul>
+
+        <hr>
+
+        <h2>トラブル報告</h2>
+        <div class="trouble-report">
+            <form id="troubleReportForm">
+                <div class="form-group">
+                    <label for="operationPerformed">どのような操作をしましたか？</label>
+                    <textarea id="operationPerformed" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="whatHappened">何が起きましたか？ (エラーメッセージなど)</label>
+                    <textarea id="whatHappened" rows="5" required></textarea>
+                </div>
+                <button type="submit">報告する</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- エラーメッセージ表示用のコンテナ -->
+    <div id="errorMessage" class="error-message"></div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html> 
