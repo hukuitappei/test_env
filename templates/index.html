@@ -10,6 +10,7 @@
     <div class="container">
         <h1>ボイスメモ帳</h1>
         <div class="controls">
+            <select id="micSelect" style="max-width:200px;margin-right:10px;"></select>
             <button id="recordButton">記録開始</button>
             <button id="stopButton" disabled>記録停止</button>
         </div>
@@ -17,6 +18,10 @@
         <div id="recordingInfo">
             <span id="recordingTime">00:00</span>
             <canvas id="audioWave" width="200" height="50"></canvas>
+            <div id="volumeBarContainer" style="width:200px;height:12px;background:#222;border-radius:6px;margin-top:6px;overflow:hidden;">
+                <div id="volumeBar" style="height:100%;width:0;background:#61afef;transition:width 0.1s;"></div>
+            </div>
+            <div id="volumeWarning" style="color:#ff5555;font-weight:bold;display:none;margin-top:2px;">音量が小さいです</div>
         </div>
         <div id="transcriptionResult"></div>
 
@@ -40,19 +45,17 @@
 
         <hr>
 
-        <h2>トラブル報告</h2>
-        <div class="trouble-report">
-            <form id="troubleReportForm">
-                <div class="form-group">
-                    <label for="operationPerformed">どのような操作をしましたか？</label>
-                    <textarea id="operationPerformed" rows="3" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="whatHappened">何が起きましたか？ (エラーメッセージなど)</label>
-                    <textarea id="whatHappened" rows="5" required></textarea>
-                </div>
-                <button type="submit">報告する</button>
-            </form>
+        <div style="width:100%;display:flex;flex-direction:column;align-items:stretch;">
+            <button id="troubleToggleBtn" style="background-color:#dc3545;color:white;font-size:1.1em;padding:8px 16px;border:none;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:6px;width:100%;max-width:100%;box-sizing:border-box;"><span style="font-size:1.3em;">⚠</span>トラブル報告</button>
+            <div id="troubleReportForm" style="display:none;margin-top:10px;width:100%;">
+                <textarea id="troubleText" rows="3" style="width:100%;resize:vertical;box-sizing:border-box;" placeholder="どのようなトラブルが発生しましたか？"></textarea>
+                <button id="troubleSendBtn" style="background-color:#dc3545;color:white;margin-top:5px;width:100%;max-width:100%;box-sizing:border-box;">送信</button>
+            </div>
+        </div>
+
+        <div id="summarySection" style="margin: 20px 0 10px 0;">
+            <label for="audioSummary" style="display:block;font-weight:bold;margin-bottom:4px;">音声の要約を表示する</label>
+            <div id="audioSummary" style="width:100%;min-height:48px;padding:10px;border:1px solid #61afef;border-radius:6px;background:#4b5263;color:#abb2bf;box-sizing:border-box;">要約はここに表示されます</div>
         </div>
     </div>
 

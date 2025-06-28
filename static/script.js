@@ -8,6 +8,11 @@ const autoRecordToggle = document.getElementById('autoRecordToggle');
 const transcriptionListUl = document.getElementById('transcriptionList');
 const troubleReportForm = document.getElementById('troubleReportForm');
 const errorMessageDiv = document.getElementById('errorMessage');
+const troubleToggleBtn = document.getElementById('troubleToggleBtn');
+const troubleText = document.getElementById('troubleText');
+const troubleSendBtn = document.getElementById('troubleSendBtn');
+const volumeBar = document.getElementById('volumeBar');
+const volumeWarning = document.getElementById('volumeWarning');
 
 const canvasContext = audioWaveCanvas.getContext('2d');
 
@@ -23,11 +28,18 @@ let analyser; // for audio visualization
 let dataArray; // for audio visualization
 let source; // for audio visualization
 let animationFrameId; // for audio visualization
+let lowVolumeStart = null;
+const LOW_VOLUME_THRESHOLD = 0.08; // 0~1の範囲で調整
+const LOW_VOLUME_DURATION = 1000; // ms
 
 const MAX_RECORDING_CHUNK_DURATION = 300 * 1000; // 5分 = 300秒 = 300,000ミリ秒
 
 // Socket.IO クライアントを初期化
 const socket = io();
+
+// マイク選択用のセレクトボックスを取得
+const micSelect = document.getElementById('micSelect');
+let selectedDeviceId = null;
 
 socket.on('connect', () => {
     console.log('Connected to Socket.IO');
@@ -75,10 +87,35 @@ stopButton.addEventListener('click', () => {
     stopRecording();
 });
 
+// 利用可能なマイク一覧を取得してセレクトボックスに追加
+async function populateMicList() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        return;
+    }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInputs = devices.filter(device => device.kind === 'audioinput');
+    micSelect.innerHTML = '';
+    audioInputs.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `マイク${micSelect.length + 1}`;
+        micSelect.appendChild(option);
+    });
+    if (audioInputs.length > 0) {
+        selectedDeviceId = audioInputs[0].deviceId;
+    }
+}
+
+micSelect.addEventListener('change', (e) => {
+    selectedDeviceId = e.target.value;
+});
+
 // 録音開始
 async function startRecording() {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // 選択されたマイクで録音
+        const constraints = selectedDeviceId ? { audio: { deviceId: { exact: selectedDeviceId } } } : { audio: true };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
         // 新しい録音セッションを開始
         session_id = uuidv4();
@@ -139,8 +176,11 @@ function stopRecording() {
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Finalization response:', data);
-            statusDiv.textContent = data.message;
+            if (data.error) {
+                statusDiv.textContent = data.error;
+            } else {
+                statusDiv.textContent = '記録完了!';
+            }
         })
         .catch(error => {
             console.error('Error finalizing recording:', error);
@@ -215,30 +255,56 @@ function draw() {
 
     analyser.getByteTimeDomainData(dataArray);
 
-    canvasContext.fillStyle = 'rgb(40, 44, 52)'; // ダークモード背景色
+    // 音量計算（RMS）
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+        const v = (dataArray[i] - 128) / 128.0;
+        sum += v * v;
+    }
+    const rms = Math.sqrt(sum / dataArray.length);
+
+    // 音量バーの幅・色を更新
+    if (volumeBar) {
+        const percent = Math.min(1, rms * 2); // 0~1
+        volumeBar.style.width = (percent * 100) + '%';
+        if (percent < 0.2) {
+            volumeBar.style.background = '#ff5555';
+        } else if (percent < 0.5) {
+            volumeBar.style.background = '#ffd700';
+        } else {
+            volumeBar.style.background = '#61afef';
+        }
+    }
+
+    // 音量が小さい場合の警告
+    if (rms < LOW_VOLUME_THRESHOLD) {
+        if (!lowVolumeStart) lowVolumeStart = Date.now();
+        if (Date.now() - lowVolumeStart > LOW_VOLUME_DURATION) {
+            if (volumeWarning) volumeWarning.style.display = 'block';
+        }
+    } else {
+        lowVolumeStart = null;
+        if (volumeWarning) volumeWarning.style.display = 'none';
+    }
+
+    // 既存の波形描画
+    canvasContext.fillStyle = 'rgb(40, 44, 52)';
     canvasContext.fillRect(0, 0, audioWaveCanvas.width, audioWaveCanvas.height);
-
     canvasContext.lineWidth = 2;
-    canvasContext.strokeStyle = 'rgb(255, 0, 0)'; // 録音中は赤
-
+    canvasContext.strokeStyle = 'rgb(255, 0, 0)';
     canvasContext.beginPath();
-
     const sliceWidth = audioWaveCanvas.width * 1.0 / dataArray.length;
     let x = 0;
-
     for(let i = 0; i < dataArray.length; i++) {
         const v = dataArray[i] / 128.0;
         const y = v * audioWaveCanvas.height / 2;
-
         if(i === 0) {
             canvasContext.moveTo(x, y);
         } else {
             canvasContext.lineTo(x, y);
         }
-
         x += sliceWidth;
     }
-
     canvasContext.lineTo(audioWaveCanvas.width, audioWaveCanvas.height/2);
     canvasContext.stroke();
 }
@@ -374,38 +440,45 @@ async function displayTranscriptionContent(filename) {
 }
 
 // トラブル報告フォームの送信
-troubleReportForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const operationPerformed = document.getElementById('operationPerformed').value;
-    const whatHappened = document.getElementById('whatHappened').value;
-
-    try {
-        const response = await fetch('/log_trouble', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                operation: operationPerformed,
-                what_happened: whatHappened,
-                timestamp: new Date().toISOString()
-            }),
-        });
-        if (response.ok) {
-            displayErrorMessage('トラブル報告が送信されました。ご協力ありがとうございます！', false);
-            troubleReportForm.reset();
+if (troubleToggleBtn && troubleReportForm) {
+    troubleToggleBtn.addEventListener('click', () => {
+        if (troubleReportForm.style.display === 'none' || troubleReportForm.style.display === '') {
+            troubleReportForm.style.display = 'block';
+            troubleText.value = '';
         } else {
-            const errorData = await response.json();
-            displayErrorMessage(`トラブル報告の送信に失敗しました: ${errorData.message}`);
+            troubleReportForm.style.display = 'none';
         }
-    } catch (error) {
-        console.error('Error submitting trouble report:', error);
-        displayErrorMessage('トラブル報告の送信中にエラーが発生しました。');
-    }
-});
+    });
+}
+
+if (troubleSendBtn) {
+    troubleSendBtn.addEventListener('click', async () => {
+        const text = troubleText.value.trim();
+        if (!text) {
+            alert('内容を入力してください');
+            return;
+        }
+        try {
+            const res = await fetch('/log_trouble', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text })
+            });
+            if (res.ok) {
+                alert('トラブル報告を送信しました');
+                troubleReportForm.style.display = 'none';
+            } else {
+                alert('送信に失敗しました');
+            }
+        } catch (e) {
+            alert('送信中にエラーが発生しました');
+        }
+    });
+}
 
 // 初期化時に設定と文字起こしリストを読み込む
 document.addEventListener('DOMContentLoaded', () => {
+    populateMicList();
     // socket.on('connect') で loadSettings と loadTranscriptions を呼んでいるので、ここでは不要
     updateButtonStates(false); // 初期状態では停止ボタンを無効化
 }); 

@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from utils.transcribe_utils import transcribe_audio_file
 # For encryption (placeholder for now)
 # from cryptography.fernet import Fernet
+import subprocess
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -58,25 +59,38 @@ def upload_audio_chunk():
         return jsonify({'error': 'No selected audio chunk'}), 400
 
     if audio_chunk:
-        # セッションごとのディレクトリを作成
         session_upload_dir = os.path.join(UPLOAD_FOLDER, secure_filename(session_id))
         os.makedirs(session_upload_dir, exist_ok=True)
 
-        filename = secure_filename(f"{session_id}_chunk{chunk_index}.wav")
-        filepath = os.path.join(session_upload_dir, filename)
-        audio_chunk.save(filepath)
+        # 一時的にwebmで保存
+        filename_webm = secure_filename(f"{session_id}_chunk{chunk_index}.webm")
+        filepath_webm = os.path.join(session_upload_dir, filename_webm)
+        audio_chunk.save(filepath_webm)
 
-        # TODO: Encrypt audio file here (Step 1.3)
-        # with open(filepath, 'rb') as f:
-        #     encrypted_data = Fernet(ENCRYPTION_KEY).encrypt(f.read())
-        # with open(filepath, 'wb') as f:
-        #     f.write(encrypted_data)
+        # ffmpegでwav(pcm)に変換
+        filename_wav = secure_filename(f"{session_id}_chunk{chunk_index}.wav")
+        filepath_wav = os.path.join(session_upload_dir, filename_wav)
+        try:
+            # ffmpegがインストールされているか確認
+            subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        except Exception as e:
+            return jsonify({'error': 'ffmpegがインストールされていません。公式サイトからインストールしてください。'}), 500
+        try:
+            # -y: 上書き, -i: 入力, -ar 16000: サンプリングレート, -ac 1: モノラル, -f wav: WAV形式, -acodec pcm_s16le: PCM16bit
+            result = subprocess.run([
+                "ffmpeg", "-y", "-i", filepath_webm, "-ar", "16000", "-ac", "1", "-f", "wav", "-acodec", "pcm_s16le", filepath_wav
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode != 0:
+                return jsonify({'error': 'ffmpegによる変換に失敗しました: ' + result.stderr.decode('utf-8')}), 500
+        except Exception as e:
+            return jsonify({'error': f'ffmpeg変換エラー: {str(e)}'}), 500
 
-        # 非同期で文字起こしを実行
-        client_sid = request.sid if request.sid else request.headers.get('X-Forwarded-For', request.remote_addr)
-        threading.Thread(target=transcribe_audio_chunk_async, args=(filepath, session_id, chunk_index, TRANSCRIPTION_FOLDER, client_sid)).start()
+        # 非同期で文字起こしを実行（wavファイルを渡す）
+        threading.Thread(target=transcribe_audio_chunk_async, args=(filepath_wav, session_id, chunk_index, TRANSCRIPTION_FOLDER, None)).start()
 
-        return jsonify({'message': 'Audio chunk uploaded and transcription started', 'filename': filename}), 200
+        return jsonify({'message': 'Audio chunk uploaded and transcription started', 'filename': filename_wav}), 200
+    # audio_chunkがなかった場合
+    return jsonify({'error': 'audio_chunkが不正です'}), 400
 
 @app.route('/finalize_recording', methods=['POST'])
 def finalize_recording():
@@ -87,11 +101,7 @@ def finalize_recording():
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
-    # ここで、session_id に関連付けられた全てのチャンクの文字起こしが完了したことを確認し、
-    # それらを結合して最終的なファイルを作成するロジックを呼び出します。
-    # これは非同期で行うべきです。
-    client_sid = request.sid if request.sid else request.headers.get('X-Forwarded-For', request.remote_addr)
-    threading.Thread(target=combine_transcriptions_async, args=(session_id, TRANSCRIPTION_FOLDER, RECORDINGS_ROOT, client_sid)).start()
+    threading.Thread(target=combine_transcriptions_async, args=(session_id, TRANSCRIPTION_FOLDER, RECORDINGS_ROOT, None)).start()
 
     return jsonify({'message': f'Recording session {session_id} finalized. Combining transcriptions.'}), 200
 
@@ -125,6 +135,7 @@ def handle_settings():
         return jsonify({'message': 'Settings retrieval not implemented yet.'}), 501
     elif request.method == 'POST':
         return jsonify({'message': 'Settings saving not implemented yet.'}), 501
+    return jsonify({'error': 'Invalid method'}), 405
 
 # Placeholder for user trouble logging (Step 1.6 - part 2)
 @app.route('/log_trouble', methods=['POST'])
@@ -148,25 +159,27 @@ def transcribe_audio_chunk_async(filepath, session_id, chunk_index, transcriptio
     # with open(temp_decrypted_filepath, 'wb') as f:
     #     f.write(decrypted_data)
 
-    socketio.emit('transcription_status', {'status': 'processing_chunk', 'session_id': session_id, 'chunk_index': chunk_index}, room=client_sid)
+    if client_sid:
+        socketio.emit('transcription_status', {'status': 'processing_chunk', 'session_id': session_id, 'chunk_index': chunk_index})
 
-    # チャンクごとの文字起こし結果は utils/transcribe_utils.py で適切な名前で保存される
-    # original_filename の代わりに session_id と chunk_index を渡す
     text = transcribe_audio_file(filepath, session_id, chunk_index, transcription_folder)
-    
+
     # TODO: Remove temp_decrypted_filepath
 
     if text:
-        socketio.emit('transcription_status', {'status': 'chunk_completed', 'session_id': session_id, 'chunk_index': chunk_index, 'text': text}, room=client_sid)
+        if client_sid:
+            socketio.emit('transcription_status', {'status': 'chunk_completed', 'session_id': session_id, 'chunk_index': chunk_index, 'text': text})
     else:
-        socketio.emit('transcription_status', {'status': 'chunk_failed', 'session_id': session_id, 'chunk_index': chunk_index}, room=client_sid)
+        if client_sid:
+            socketio.emit('transcription_status', {'status': 'chunk_failed', 'session_id': session_id, 'chunk_index': chunk_index})
 
 
 def combine_transcriptions_async(session_id, transcription_folder, recordings_root, client_sid):
     """
     指定されたセッションIDに紐づく全ての文字起こしチャンクを結合し、最終的なテキストファイルを生成します。
     """
-    socketio.emit('transcription_status', {'status': 'combining_results', 'session_id': session_id}, room=client_sid)
+    if client_sid:
+        socketio.emit('transcription_status', {'status': 'combining_results', 'session_id': session_id})
 
     combined_text_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{session_id}.txt"
     combined_filepath = os.path.join(recordings_root, combined_text_filename)
@@ -193,22 +206,22 @@ def combine_transcriptions_async(session_id, transcription_folder, recordings_ro
                 session_transcriptions.append(f.read())
         
         # 結合して最終ファイルに書き込む
-        final_text = "\\n".join(session_transcriptions)
+        final_text = "\n".join(session_transcriptions)
         with open(combined_filepath, 'w', encoding='utf-8') as f:
             f.write(final_text)
         print(f"Combined transcription saved: {combined_filepath}")
-        socketio.emit('transcription_status', {'status': 'final_completed', 'session_id': session_id, 'final_filename': combined_text_filename}, room=client_sid)
+        if client_sid:
+            socketio.emit('transcription_status', {'status': 'final_completed', 'session_id': session_id, 'final_filename': combined_text_filename})
     else:
         print(f"No transcription chunks found for session {session_id}")
-        socketio.emit('transcription_status', {'status': 'final_failed', 'session_id': session_id, 'error': 'No chunks found'}, room=client_sid)
+        if client_sid:
+            socketio.emit('transcription_status', {'status': 'final_failed', 'session_id': session_id, 'error': 'No chunks found'})
 
-@socketio.on('connect')
 def test_connect():
-    print('Client connected', request.sid)
+    print('Client connected')
 
-@socketio.on('disconnect')
 def test_disconnect():
-    print('Client disconnected', request.sid)
+    print('Client disconnected')
 
 if __name__ == '__main__':
     socketio.run(app, debug=True) 
