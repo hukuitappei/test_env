@@ -9,6 +9,14 @@ from utils.transcribe_utils import transcribe_audio_file
 # For encryption (placeholder for now)
 # from cryptography.fernet import Fernet
 import subprocess
+try:
+    from dotenv import load_dotenv
+    import openai
+    from langchain.llms import OpenAI as LangChainOpenAI
+    from langchain.prompts import PromptTemplate
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -32,6 +40,10 @@ os.makedirs(SETTINGS_FOLDER, exist_ok=True)
 # チャンクごとに文字起こしを実行するので、ここではセッションごとのチャンク管理は不要かもしれません。
 # transcribe_audio_file_async に session_id と chunk_index を渡すことで、
 # utils/transcribe_utils.py で適切なファイル名で保存するようにします。
+
+if LANGCHAIN_AVAILABLE:
+    load_dotenv()
+    openai.api_key = os.getenv('OPENAI_API_KEY')
 
 @app.route('/')
 def index():
@@ -146,6 +158,27 @@ def log_trouble():
     print(f"User reported trouble: {request.json}")
     return jsonify({'message': 'Trouble reported successfully.'}), 200
 
+@app.route('/summarize', methods=['POST'])
+def summarize():
+    """
+    文字起こしテキストを受け取り、日本語で要約を返すAPI。
+    """
+    if not LANGCHAIN_AVAILABLE:
+        return jsonify({'error': 'LangChainまたはOpenAI関連パッケージがインストールされていません'}), 500
+    data = request.get_json() or {}
+    text = data.get('text', '')
+    if not text:
+        return jsonify({'error': 'テキストがありません'}), 400
+    try:
+        prompt = PromptTemplate(
+            input_variables=["text"],
+            template="""以下の日本語テキストを3行以内で要約してください：\n{text}\n要約："""
+        )
+        llm = LangChainOpenAI(temperature=0.3, max_tokens=256, model_name="gpt-3.5-turbo")
+        summary = llm(prompt.format(text=text))
+        return jsonify({'summary': summary.strip()}), 200
+    except Exception as e:
+        return jsonify({'error': f'要約生成に失敗しました: {str(e)}'}), 500
 
 def transcribe_audio_chunk_async(filepath, session_id, chunk_index, transcription_folder, client_sid):
     """

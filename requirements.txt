@@ -1,3 +1,6 @@
 Flask
 SpeechRecognition
-Flask-SocketIO 
+Flask-SocketIO
+langchain
+openai
+python-dotenv 
