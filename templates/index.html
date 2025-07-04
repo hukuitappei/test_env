@@ -5,12 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ボイスメモ帳</title>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        #settings-gear-btn {
+            position: absolute;
+            top: 18px;
+            right: 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 2em;
+            color: #61afef;
+            z-index: 1100;
+        }
+        #settings-modal {
+            display: none;
+            position: fixed;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #222;
+            color: #fff;
+            border: 1px solid #61afef;
+            border-radius: 10px;
+            padding: 32px 24px 24px 24px;
+            z-index: 2000;
+            min-width: 340px;
+            max-width: 90vw;
+            box-shadow: 0 4px 32px #000a;
+        }
+        #settings-modal h2 {
+            margin-top: 0;
+        }
+        #settings-modal .close-btn {
+            position: absolute;
+            top: 12px;
+            right: 18px;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 1.5em;
+            cursor: pointer;
+        }
+        #settings-modal .settings-section {
+            margin-bottom: 24px;
+        }
+    </style>
 </head>
 <body class="dark-mode">
     <div class="container">
-        <h1>ボイスメモ帳</h1>
+        <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:24px;">
+            <h1 style="margin-bottom:0;">ボイスメモ帳</h1>
+            <button id="settings-gear-btn" title="設定" style="position:static;font-size:1.5em;margin-left:8px;"><span>⚙️</span></button>
+        </div>
         <div class="controls">
-            <select id="micSelect" style="max-width:200px;margin-right:10px;"></select>
+            <!-- <select id="micSelect" style="max-width:200px;margin-right:10px;"></select> -->
             <button id="recordButton">記録開始</button>
             <button id="stopButton" disabled>記録停止</button>
         </div>
@@ -24,17 +72,6 @@
             <div id="volumeWarning" style="color:#ff5555;font-weight:bold;display:none;margin-top:2px;">音量が小さいです</div>
         </div>
         <div id="transcriptionResult"></div>
-
-        <hr>
-
-        <h2>設定</h2>
-        <div class="settings">
-            <label for="autoRecordToggle">
-                <input type="checkbox" id="autoRecordToggle">
-                起動時に自動で記録を開始
-            </label>
-            <p>音声ファイルの分割長さ: 5分</p>
-        </div>
 
         <hr>
 
@@ -57,10 +94,41 @@
             <label for="audioSummary" style="display:block;font-weight:bold;margin-bottom:4px;">音声の要約を表示する</label>
             <div id="audioSummary" style="width:100%;min-height:48px;padding:10px;border:1px solid #61afef;border-radius:6px;background:#4b5263;color:#abb2bf;box-sizing:border-box;">要約はここに表示されます</div>
         </div>
+
+        <!-- ユーザー辞書アクセスボタン -->
+        <!-- <button id="open-dictionary-btn">ユーザー辞書</button> -->
+
+        <!-- ユーザー辞書モーダル -->
+        <!--
+        <div id="dictionary-modal" style="display:none; position:fixed; top:10%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #888; padding:20px; z-index:1000; min-width:300px;">
+          <h3>ユーザー辞書</h3>
+          <div>
+            <b>単語辞書</b>
+            <ul id="word-dictionary-list"></ul>
+            <input type="text" id="add-word-input" placeholder="新しい単語">
+            <button id="add-word-btn">追加</button>
+          </div>
+          <div style="margin-top:1em;">
+            <b>コマンド辞書</b>
+            <ul id="command-dictionary-list"></ul>
+            <input type="text" id="add-command-input" placeholder="新しいコマンド">
+            <button id="add-command-btn">追加</button>
+          </div>
+          <button id="close-dictionary-btn" style="margin-top:1em;">閉じる</button>
+        </div>
+        -->
     </div>
 
     <!-- エラーメッセージ表示用のコンテナ -->
     <div id="errorMessage" class="error-message"></div>
+
+    <div id="settings-modal">
+        <button class="close-btn" id="close-settings-modal">×</button>
+        <h2>設定</h2>
+        <div id="settings-content">
+            <!-- 各種設定セクションをここに動的に挿入 -->
+        </div>
+    </div>
 
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script src="/static/script.js"></script>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユーザー辞書管理</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .tab-btn { padding: 8px 16px; border: none; border-radius: 5px 5px 0 0; background: #333; color: #fff; cursor: pointer; margin-right: 4px; }
+        .tab-btn.active { background: #61afef; color: #222; }
+        .dict-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .dict-table th, .dict-table td { border: 1px solid #444; padding: 6px 8px; }
+        .dict-table th { background: #222; }
+        .dict-table td .edit-btn, .dict-table td .delete-btn { margin-right: 4px; }
+        .search-box { width: 200px; margin-bottom: 8px; }
+    </style>
+</head>
+<body class="dark-mode">
+    <div class="container">
+        <h1>ユーザー辞書管理</h1>
+        <div>
+            <button class="tab-btn active" id="commandTabBtn">指示コマンド辞書</button>
+            <button class="tab-btn" id="wordTabBtn">よく使う単語辞書</button>
+        </div>
+        <div id="commandDictSection">
+            <input type="text" id="commandSearch" class="search-box" placeholder="検索...">
+            <form id="commandAddForm" style="display:inline-block; margin-left:10px;">
+                <input type="text" id="commandAddInput" placeholder="新しいコマンド" required>
+                <button type="submit">追加</button>
+            </form>
+            <table class="dict-table" id="commandDictTable">
+                <thead><tr><th>コマンド</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="wordDictSection" style="display:none;">
+            <input type="text" id="wordSearch" class="search-box" placeholder="検索...">
+            <form id="wordAddForm" style="display:inline-block; margin-left:10px;">
+                <input type="text" id="wordAddInput" placeholder="新しい単語" required>
+                <button type="submit">追加</button>
+            </form>
+            <table class="dict-table" id="wordDictTable">
+                <thead><tr><th>単語</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <a href="/" style="display:block;margin-top:20px;">← メイン画面に戻る</a>
+    </div>
+    <script src="/static/dictionary.js"></script>
+</body>
+</html> 

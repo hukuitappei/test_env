@@ -41,6 +41,8 @@ const socket = io();
 const micSelect = document.getElementById('micSelect');
 let selectedDeviceId = null;
 
+let pendingUploads = 0;
+
 socket.on('connect', () => {
     console.log('Connected to Socket.IO');
     statusDiv.textContent = '準備完了';
@@ -79,11 +81,11 @@ socket.on('transcription_status', (data) => {
     }
 });
 
-recordButton.addEventListener('click', () => {
+if (recordButton) recordButton.addEventListener('click', () => {
     startRecording();
 });
 
-stopButton.addEventListener('click', () => {
+if (stopButton) stopButton.addEventListener('click', () => {
     stopRecording();
 });
 
@@ -94,19 +96,19 @@ async function populateMicList() {
     }
     const devices = await navigator.mediaDevices.enumerateDevices();
     const audioInputs = devices.filter(device => device.kind === 'audioinput');
-    micSelect.innerHTML = '';
+    if (micSelect) micSelect.innerHTML = '';
     audioInputs.forEach(device => {
         const option = document.createElement('option');
         option.value = device.deviceId;
         option.text = device.label || `マイク${micSelect.length + 1}`;
-        micSelect.appendChild(option);
+        if (micSelect) micSelect.appendChild(option);
     });
     if (audioInputs.length > 0) {
         selectedDeviceId = audioInputs[0].deviceId;
     }
 }
 
-micSelect.addEventListener('change', (e) => {
+if (micSelect) micSelect.addEventListener('change', (e) => {
     selectedDeviceId = e.target.value;
 });
 
@@ -165,41 +167,23 @@ async function startRecording() {
 function stopRecording() {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
-
-        // 録音セッションの終了をサーバーに通知
-        fetch('/finalize_recording', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ session_id: session_id }),
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                statusDiv.textContent = data.error;
-            } else {
-                statusDiv.textContent = '記録完了!';
-            }
-        })
-        .catch(error => {
-            console.error('Error finalizing recording:', error);
-            displayErrorMessage('録音終了処理中にエラーが発生しました。');
-        });
+        statusDiv.textContent = 'アップロード中...';
+        // アップロード完了を待ってからファイナライズ
+        waitForAllUploadsThenFinalize();
     }
 }
 
 // 音声チャンクをサーバーに送信
 async function sendAudioChunk(audioBlob, sessionId, chunkIndex) {
+    pendingUploads++;
     const formData = new FormData();
     formData.append('audio_chunk', audioBlob, `chunk_${chunkIndex}.webm`);
     formData.append('session_id', sessionId);
     formData.append('chunk_index', chunkIndex);
-
     try {
         const response = await fetch('/upload_audio_chunk', {
             method: 'POST',
-            body: formData,
+            body: formData
         });
 
         const data = await response.json();
@@ -209,7 +193,38 @@ async function sendAudioChunk(audioBlob, sessionId, chunkIndex) {
     } catch (error) {
         console.error('Error uploading audio chunk:', error);
         displayErrorMessage('音声チャンクのアップロード中にエラーが発生しました。');
+    } finally {
+        pendingUploads--;
     }
+}
+
+function waitForAllUploadsThenFinalize() {
+    const check = () => {
+        if (pendingUploads === 0) {
+            fetch('/finalize_recording', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ session_id: session_id }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.textContent = data.error;
+                } else {
+                    statusDiv.textContent = '記録完了!';
+                }
+            })
+            .catch(error => {
+                console.error('Error finalizing recording:', error);
+                displayErrorMessage('録音終了処理中にエラーが発生しました。');
+            });
+        } else {
+            setTimeout(check, 200);
+        }
+    };
+    check();
 }
 
 // UUID v4 を生成するシンプルな関数
@@ -325,23 +340,23 @@ function stopAudioWave() {
 // ボタンの状態を更新
 function updateButtonStates(isRecording) {
     if (isRecording) {
-        recordButton.disabled = true;
-        stopButton.disabled = false;
-        recordButton.style.backgroundColor = 'red';
-        stopButton.style.backgroundColor = ''; // デフォルトに戻す
+        if (recordButton) recordButton.disabled = true;
+        if (stopButton) stopButton.disabled = false;
+        if (recordButton) recordButton.style.backgroundColor = 'red';
+        if (stopButton) stopButton.style.backgroundColor = ''; // デフォルトに戻す
     } else {
-        recordButton.disabled = false;
-        stopButton.disabled = true;
-        recordButton.style.backgroundColor = 'green';
-        stopButton.style.backgroundColor = '';
+        if (recordButton) recordButton.disabled = false;
+        if (stopButton) stopButton.disabled = true;
+        if (recordButton) recordButton.style.backgroundColor = 'green';
+        if (stopButton) stopButton.style.backgroundColor = '';
     }
 }
 
 // エラーメッセージの表示
 function displayErrorMessage(message, isError = true) {
-    errorMessageDiv.textContent = message;
-    errorMessageDiv.style.display = message ? 'block' : 'none';
-    errorMessageDiv.style.backgroundColor = isError ? '#dc3545' : '#28a745'; // 赤 (エラー) または緑 (成功)
+    if (errorMessageDiv) errorMessageDiv.textContent = message;
+    if (errorMessageDiv) errorMessageDiv.style.display = message ? 'block' : 'none';
+    if (errorMessageDiv) errorMessageDiv.style.backgroundColor = isError ? '#dc3545' : '#28a745'; // 赤 (エラー) または緑 (成功)
 }
 
 // 設定の読み込みと保存
@@ -351,14 +366,16 @@ async function loadSettings() {
         if (response.ok) {
             const data = await response.json();
             settings = data.settings; // Assuming settings are nested under 'settings' key
-            autoRecordToggle.checked = settings.autoRecord || false;
-            if (autoRecordToggle.checked) {
-                startRecording();
+            if (autoRecordToggle) {
+                autoRecordToggle.checked = settings.autoRecord || false;
+                if (autoRecordToggle.checked) {
+                    startRecording();
+                }
             }
         } else if (response.status === 501) {
             // Not Implemented: 初回起動などで設定がない場合、デフォルト値を設定
             settings = { autoRecord: false };
-            autoRecordToggle.checked = false;
+            if (autoRecordToggle) autoRecordToggle.checked = false;
         } else {
             displayErrorMessage(`設定の読み込みに失敗しました: ${response.statusText}`);
         }
@@ -371,7 +388,7 @@ async function loadSettings() {
 async function saveSettings() {
     try {
         const newSettings = {
-            autoRecord: autoRecordToggle.checked
+            autoRecord: autoRecordToggle ? autoRecordToggle.checked : false
         };
         const response = await fetch('/settings', {
             method: 'POST',
@@ -390,7 +407,7 @@ async function saveSettings() {
     }
 }
 
-autoRecordToggle.addEventListener('change', saveSettings);
+if (autoRecordToggle) autoRecordToggle.addEventListener('change', saveSettings);
 
 // 過去の文字起こしリストの読み込み
 async function loadTranscriptions() {
@@ -398,14 +415,41 @@ async function loadTranscriptions() {
         const response = await fetch('/list_transcriptions');
         if (response.ok) {
             const data = await response.json();
-            transcriptionListUl.innerHTML = ''; // Clear current list
+            transcriptionListUl.innerHTML = '';
             if (data.transcriptions && data.transcriptions.length > 0) {
-                data.transcriptions.forEach(filename => {
+                data.transcriptions.forEach(path => {
                     const li = document.createElement('li');
                     const link = document.createElement('a');
-                    link.href = `javascript:void(0)`; // Prevents page reload
-                    link.textContent = filename;
-                    link.addEventListener('click', () => displayTranscriptionContent(filename));
+                    link.href = 'javascript:void(0)';
+                    // パスからファイル名のみ抽出
+                    const parts = path.split(/[/\\]/);
+                    const filename = parts[parts.length - 1];
+                    let displayName = filename;
+                    // 1. 結合済みファイル: YYYYMMDD_HHMMSS_タグ.txt → YYYY-MM-DD_タグ.txt
+                    const matchCombined = filename.match(/(\d{8})_(\d{6})_(.+)\.txt$/);
+                    if (matchCombined) {
+                        const y = matchCombined[1].slice(0,4);
+                        const m = matchCombined[1].slice(4,6);
+                        const d = matchCombined[1].slice(6,8);
+                        const tag = matchCombined[3];
+                        displayName = `${y}-${m}-${d}_${tag}.txt`;
+                    } else {
+                        // 2. チャンクファイル: sessionid_chunkN.txt → 日付_無題.txt（sessionidの先頭8桁を日付と仮定、なければ"無題"）
+                        const matchChunk = filename.match(/([a-zA-Z0-9\-]{8,})_chunk\d+\.txt$/);
+                        if (matchChunk) {
+                            // sessionidの先頭8桁を日付に見立てる（なければ"無題"）
+                            const sessionId = matchChunk[1];
+                            let y = '----', m = '--', d = '--';
+                            if (/\d{8}/.test(sessionId.slice(0,8))) {
+                                y = sessionId.slice(0,4);
+                                m = sessionId.slice(4,6);
+                                d = sessionId.slice(6,8);
+                            }
+                            displayName = `${y}-${m}-${d}_無題.txt`;
+                        }
+                    }
+                    link.textContent = displayName;
+                    link.addEventListener('click', () => displayTranscriptionContent(path));
                     li.appendChild(link);
                     transcriptionListUl.appendChild(li);
                 });
@@ -419,17 +463,37 @@ async function loadTranscriptions() {
         }
     } catch (error) {
         console.error('Error loading transcriptions:', error);
-        displayErrorMessage('文字起こしリストの読み込み中にエラーが発生しました。');
+        displayErrorMessage('過去のメモ一覧の取得中にエラーが発生しました。');
     }
 }
 
-// 文字起こしファイルの内容を表示
+// 文字起こしファイルの内容を表示＋要約
 async function displayTranscriptionContent(filename) {
     try {
         const response = await fetch(`/transcriptions/${filename}`);
         if (response.ok) {
             const textContent = await response.text();
             transcriptionResultDiv.innerHTML = `<h2>${filename}</h2><pre>${textContent}</pre>`;
+            // 要約API呼び出し
+            const summaryDiv = document.getElementById('audioSummary');
+            if (summaryDiv) {
+                summaryDiv.textContent = '要約生成中...';
+                try {
+                    const res = await fetch('/summarize', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: textContent })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        summaryDiv.textContent = data.summary || '要約がありません';
+                    } else {
+                        summaryDiv.textContent = '要約生成に失敗しました';
+                    }
+                } catch (e) {
+                    summaryDiv.textContent = '要約生成中にエラーが発生しました';
+                }
+            }
         } else {
             displayErrorMessage(`ファイルの読み込みに失敗しました: ${response.statusText}`);
         }
@@ -481,4 +545,328 @@ document.addEventListener('DOMContentLoaded', () => {
     populateMicList();
     // socket.on('connect') で loadSettings と loadTranscriptions を呼んでいるので、ここでは不要
     updateButtonStates(false); // 初期状態では停止ボタンを無効化
-}); 
+});
+
+// ユーザー辞書モーダルの制御
+const openDictBtn = document.getElementById('open-dictionary-btn');
+const closeDictBtn = document.getElementById('close-dictionary-btn');
+const dictModal = document.getElementById('dictionary-modal');
+const wordList = document.getElementById('word-dictionary-list');
+const commandList = document.getElementById('command-dictionary-list');
+const addWordInput = document.getElementById('add-word-input');
+const addWordBtn = document.getElementById('add-word-btn');
+const addCommandInput = document.getElementById('add-command-input');
+const addCommandBtn = document.getElementById('add-command-btn');
+
+function showDictionaryModal() {
+  dictModal.style.display = 'block';
+  loadWordDictionary();
+  loadCommandDictionary();
+}
+function hideDictionaryModal() {
+  dictModal.style.display = 'none';
+}
+if (openDictBtn) openDictBtn.onclick = showDictionaryModal;
+if (closeDictBtn) closeDictBtn.onclick = hideDictionaryModal;
+
+// 単語辞書取得・表示
+function loadWordDictionary() {
+  fetch('/api/word_dictionary').then(r=>r.json()).then(list => {
+    wordList.innerHTML = '';
+    list.forEach(word => {
+      const li = document.createElement('li');
+      li.textContent = word;
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '削除';
+      delBtn.onclick = () => deleteWord(word);
+      li.appendChild(delBtn);
+      wordList.appendChild(li);
+    });
+  });
+}
+function addWord() {
+  const word = addWordInput.value.trim();
+  if (!word) return;
+  fetch('/api/word_dictionary', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({word})
+  }).then(()=>{addWordInput.value='';loadWordDictionary();});
+}
+function deleteWord(word) {
+  fetch('/api/word_dictionary', {
+    method: 'DELETE',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({word})
+  }).then(loadWordDictionary);
+}
+if (addWordBtn) addWordBtn.onclick = addWord;
+
+// コマンド辞書取得・表示
+function loadCommandDictionary() {
+  fetch('/api/command_dictionary').then(r=>r.json()).then(list => {
+    commandList.innerHTML = '';
+    list.forEach(word => {
+      const li = document.createElement('li');
+      li.textContent = word;
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '削除';
+      delBtn.onclick = () => deleteCommand(word);
+      li.appendChild(delBtn);
+      commandList.appendChild(li);
+    });
+  });
+}
+function addCommand() {
+  const word = addCommandInput.value.trim();
+  if (!word) return;
+  fetch('/api/command_dictionary', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({word})
+  }).then(()=>{addCommandInput.value='';loadCommandDictionary();});
+}
+function deleteCommand(word) {
+  fetch('/api/command_dictionary', {
+    method: 'DELETE',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({word})
+  }).then(loadCommandDictionary);
+}
+if (addCommandBtn) addCommandBtn.onclick = addCommand;
+
+// トークン利用履歴の表示UI（web上に直接表示する部分）は削除
+// renderTokenUsage, loadTokenUsage, window.addEventListener('DOMContentLoaded', loadTokenUsage) などを削除
+// 設定モーダル内のrenderTokenUsageInのみ残す
+// 設定モーダルUI・タブ切り替え
+const settingsGearBtn = document.getElementById('settings-gear-btn');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettingsModalBtn = document.getElementById('close-settings-modal');
+const settingsContent = document.getElementById('settings-content');
+
+function showSettingsModal() {
+    settingsModal.style.display = 'block';
+    renderSettingsTabs();
+}
+function hideSettingsModal() {
+    settingsModal.style.display = 'none';
+}
+if (settingsGearBtn) settingsGearBtn.addEventListener('click', showSettingsModal);
+if (closeSettingsModalBtn) closeSettingsModalBtn.addEventListener('click', hideSettingsModal);
+
+function renderSettingsTabs() {
+    settingsContent.innerHTML = `
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <button class="settings-tab-btn" data-tab="startup">起動設定</button>
+            <button class="settings-tab-btn" data-tab="mic">マイク設定</button>
+            <button class="settings-tab-btn" data-tab="shortcut">ショートカット</button>
+            <button class="settings-tab-btn" data-tab="token">トークン履歴</button>
+            <button class="settings-tab-btn" data-tab="dictionary">ユーザー辞書</button>
+        </div>
+        <div id="settings-tab-content"></div>
+    `;
+    const tabBtns = settingsContent.querySelectorAll('.settings-tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderSettingsTabContent(btn.dataset.tab);
+        });
+    });
+    // デフォルトで起動設定タブ
+    tabBtns[0].click();
+}
+
+function renderSettingsTabContent(tab) {
+    const tabContent = document.getElementById('settings-tab-content');
+    tabContent.innerHTML = '';
+    if (tab === 'startup') {
+        tabContent.innerHTML = `
+            <div class="settings-section">
+                <label for="autoRecordToggle">
+                    <input type="checkbox" id="autoRecordToggle">
+                    起動時に自動で記録を開始
+                </label>
+                <p>音声ファイルの分割長さ: 5分</p>
+            </div>
+        `;
+        // 既存の設定値を反映
+        const autoRecordToggle = tabContent.querySelector('#autoRecordToggle');
+        if (autoRecordToggle) {
+            if (localStorage.getItem('autoRecord') === 'true') autoRecordToggle.checked = true;
+            autoRecordToggle.addEventListener('change', () => {
+                localStorage.setItem('autoRecord', autoRecordToggle.checked ? 'true' : 'false');
+            });
+        }
+    } else if (tab === 'mic') {
+        // マイク設定
+        renderMicSettings(tabContent);
+    } else if (tab === 'shortcut') {
+        // ショートカット設定
+        const section = document.createElement('div');
+        section.className = 'settings-section';
+        tabContent.appendChild(section);
+        // 既存のrenderShortcutSettingsをsection内に描画
+        renderShortcutSettings(section);
+    } else if (tab === 'token') {
+        // トークン履歴
+        const section = document.createElement('div');
+        section.className = 'settings-section';
+        tabContent.appendChild(section);
+        renderTokenUsageIn(section);
+    } else if (tab === 'dictionary') {
+        // ユーザー辞書
+        const section = document.createElement('div');
+        section.className = 'settings-section';
+        tabContent.appendChild(section);
+        renderDictionarySection(section);
+    }
+}
+
+// renderShortcutSettingsをモーダル用に拡張
+function renderShortcutSettings(parent) {
+    if (!parent) return; // parentがundefined/nullなら何もしない
+    parent.innerHTML = `<h3>ショートカットキー設定</h3>
+        <table class="dict-table" style="width:100%;margin-top:10px;">
+            <thead><tr><th>操作</th><th>ショートカット</th><th>変更</th></tr></thead>
+            <tbody id="shortcutSettingsTbody"></tbody>
+        </table>`;
+    const tbody = parent.querySelector('#shortcutSettingsTbody');
+    tbody.innerHTML = '';
+    const actions = [
+        { key: 'startRecording', label: '録音開始' },
+        { key: 'stopRecording', label: '録音停止' },
+        { key: 'openDictionary', label: 'ユーザー辞書表示' },
+        { key: 'summarize', label: '要約実行' },
+    ];
+    actions.forEach(act => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${act.label}</td><td><span>${shortcutToDisplay(shortcuts[act.key])}</span></td><td><button>変更</button></td>`;
+        const btn = tr.querySelector('button');
+        btn.addEventListener('click', () => {
+            btn.textContent = 'キー入力待ち...';
+            const onKey = (e) => {
+                e.preventDefault();
+                let combo = '';
+                if (e.ctrlKey) combo += 'Ctrl+';
+                if (e.altKey) combo += 'Alt+';
+                if (e.shiftKey) combo += 'Shift+';
+                combo += e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                shortcuts[act.key] = combo;
+                saveShortcuts(shortcuts);
+                renderShortcutSettings(parent);
+                document.removeEventListener('keydown', onKey, true);
+            };
+            document.addEventListener('keydown', onKey, true);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+// トークン履歴をモーダル用に描画
+function renderTokenUsageIn(parent) {
+    parent.innerHTML = `<h3>トークン利用履歴</h3>
+        <div id="tokenUsageSummary"></div>
+        <table id="tokenUsageTable" class="dict-table" style="width:100%;margin-top:10px;">
+            <thead><tr><th>日時</th><th>モデル</th><th>入力</th><th>出力</th><th>合計</th><th>コスト($)</th></tr></thead>
+            <tbody></tbody>
+        </table>`;
+    fetch('/api/token_usage').then(res => res.json()).then(usageData => {
+        const summaryDiv = parent.querySelector('#tokenUsageSummary');
+        summaryDiv.textContent = `合計トークン: ${usageData.total_tokens} / 合計コスト: $${usageData.total_cost.toFixed(4)}`;
+        const tbody = parent.querySelector('#tokenUsageTable tbody');
+        tbody.innerHTML = '';
+        (usageData.usage || []).slice().reverse().forEach(u => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${u.timestamp}</td><td>${u.model}</td><td>${u.prompt_tokens}</td><td>${u.completion_tokens}</td><td>${u.total_tokens}</td><td>${u.cost.toFixed(4)}</td>`;
+            tbody.appendChild(tr);
+        });
+    });
+}
+
+// ユーザー辞書をモーダル用に描画（簡易版）
+function renderDictionarySection(parent) {
+    parent.innerHTML = `<h3>ユーザー辞書</h3><p>ユーザー辞書の管理は今後ここに統合予定です。</p>`;
+    // 必要に応じて既存の辞書UIをここに移植
+}
+
+// マイク設定タブの実装
+function renderMicSettings(parent) {
+    parent.innerHTML = `
+        <div class="settings-section">
+            <label for="micSelect">マイク選択：</label>
+            <select id="micSelect" style="max-width:220px;margin-right:10px;"></select>
+            <button id="micTestBtn">テスト</button>
+            <div id="micTestResult" style="margin-top:12px;"></div>
+        </div>
+    `;
+    const micSelect = parent.querySelector('#micSelect');
+    const micTestBtn = parent.querySelector('#micTestBtn');
+    const micTestResult = parent.querySelector('#micTestResult');
+    // マイク一覧取得
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+        micSelect.innerHTML = '';
+        devices.filter(d => d.kind === 'audioinput').forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.textContent = d.label || `マイク${micSelect.length+1}`;
+            micSelect.appendChild(opt);
+        });
+        // 保存済み選択肢
+        const savedId = localStorage.getItem('selectedMicId');
+        if (savedId) micSelect.value = savedId;
+    });
+    micSelect.addEventListener('change', () => {
+        localStorage.setItem('selectedMicId', micSelect.value);
+    });
+    // テスト機能
+    let testStream = null;
+    let testAudioContext = null;
+    let testAnalyser = null;
+    let testAnimationId = null;
+    micTestBtn.addEventListener('click', async () => {
+        if (testStream) {
+            // テスト終了
+            testStream.getTracks().forEach(track => track.stop());
+            if (testAudioContext) testAudioContext.close();
+            cancelAnimationFrame(testAnimationId);
+            testStream = null;
+            micTestBtn.textContent = 'テスト';
+            micTestResult.innerHTML = '';
+            return;
+        }
+        // テスト開始
+        try {
+            testStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: micSelect.value ? { exact: micSelect.value } : undefined } });
+            testAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = testAudioContext.createMediaStreamSource(testStream);
+            testAnalyser = testAudioContext.createAnalyser();
+            source.connect(testAnalyser);
+            const dataArray = new Uint8Array(testAnalyser.fftSize);
+            micTestResult.innerHTML = '<canvas id="micTestCanvas" width="220" height="40" style="background:#333;border-radius:6px;"></canvas>';
+            const canvas = micTestResult.querySelector('#micTestCanvas');
+            const ctx = canvas.getContext('2d');
+            function draw() {
+                testAnalyser.getByteTimeDomainData(dataArray);
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                // 波形描画
+                ctx.beginPath();
+                for (let i=0; i<canvas.width; i++) {
+                    const v = dataArray[Math.floor(i/dataArray.length*dataArray.length)]/128.0;
+                    const y = v*20;
+                    if (i===0) ctx.moveTo(i,20+y);
+                    else ctx.lineTo(i,20+y);
+                }
+                ctx.strokeStyle = '#61afef';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                testAnimationId = requestAnimationFrame(draw);
+            }
+            draw();
+            micTestBtn.textContent = 'テスト終了';
+        } catch(e) {
+            micTestResult.textContent = 'マイクテストに失敗しました';
+            testStream = null;
+        }
+    });
+} 

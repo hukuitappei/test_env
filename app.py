@@ -9,13 +9,18 @@ from utils.transcribe_utils import transcribe_audio_file
 # For encryption (placeholder for now)
 # from cryptography.fernet import Fernet
 import subprocess
+import json
+import time
 try:
     from dotenv import load_dotenv
     import openai
-    from langchain.llms import OpenAI as LangChainOpenAI
+    from langchain_community.chat_models import ChatOpenAI
     from langchain.prompts import PromptTemplate
     LANGCHAIN_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    print("ImportError:", e)
+    import traceback
+    traceback.print_exc()
     LANGCHAIN_AVAILABLE = False
 
 app = Flask(__name__)
@@ -44,6 +49,49 @@ os.makedirs(SETTINGS_FOLDER, exist_ok=True)
 if LANGCHAIN_AVAILABLE:
     load_dotenv()
     openai.api_key = os.getenv('OPENAI_API_KEY')
+
+COMMAND_DICT_PATH = os.path.join(SETTINGS_FOLDER, 'command_dictionary.json')
+WORD_DICT_PATH = os.path.join(SETTINGS_FOLDER, 'word_dictionary.json')
+TOKEN_USAGE_PATH = os.path.join(SETTINGS_FOLDER, 'token_usage.json')
+MODEL_PRICING = {
+    'gpt-4o': 0.005 / 1000,  # $0.005/1K tokens
+    'gpt-4': 0.03 / 1000,    # $0.03/1K tokens
+    'gpt-3.5-turbo': 0.001 / 1000, # $0.001/1K tokens
+}
+
+def load_dict(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_dict(path, data):
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def load_token_usage():
+    if not os.path.exists(TOKEN_USAGE_PATH):
+        return []
+    with open(TOKEN_USAGE_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_token_usage(data):
+    with open(TOKEN_USAGE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def record_token_usage(model, prompt_tokens, completion_tokens, total_tokens):
+    usage = load_token_usage()
+    unit_price = MODEL_PRICING.get(model, 0.005 / 1000)  # デフォルトgpt-4o
+    cost = total_tokens * unit_price
+    usage.append({
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'model': model,
+        'prompt_tokens': prompt_tokens,
+        'completion_tokens': completion_tokens,
+        'total_tokens': total_tokens,
+        'cost': cost
+    })
+    save_token_usage(usage)
 
 @app.route('/')
 def index():
@@ -109,7 +157,8 @@ def finalize_recording():
     """
     録音セッションの終了を通知し、全てのチャンクの文字起こしが完了した後に最終的なテキストファイルを生成します。
     """
-    session_id = request.json.get('session_id')
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
@@ -162,23 +211,154 @@ def log_trouble():
 def summarize():
     """
     文字起こしテキストを受け取り、日本語で要約を返すAPI。
+    OpenAI APIのusage情報があればトークン利用量を記録する。
     """
+    import sys
+    print("=== /summarize called ===", flush=True)
+    sys.stdout.flush()
     if not LANGCHAIN_AVAILABLE:
+        print("LangChainまたはOpenAI関連パッケージがインストールされていません")
         return jsonify({'error': 'LangChainまたはOpenAI関連パッケージがインストールされていません'}), 500
     data = request.get_json() or {}
+    print("/summarize called. data:", data)
     text = data.get('text', '')
+    print("text:", text)
     if not text:
+        print("テキストがありません")
         return jsonify({'error': 'テキストがありません'}), 400
     try:
         prompt = PromptTemplate(
             input_variables=["text"],
             template="""以下の日本語テキストを3行以内で要約してください：\n{text}\n要約："""
         )
-        llm = LangChainOpenAI(temperature=0.3, max_tokens=256, model_name="gpt-3.5-turbo")
-        summary = llm(prompt.format(text=text))
-        return jsonify({'summary': summary.strip()}), 200
+        print("PromptTemplate作成完了")
+        llm = ChatOpenAI(temperature=0.3, model="gpt-3.5-turbo")
+        print("ChatOpenAIインスタンス作成完了")
+        result = llm.invoke(prompt.format(text=text), max_tokens=256)
+        summary = None
+        # usage情報取得
+        usage = getattr(result, 'usage', None)
+        model = getattr(llm, 'model_name', 'gpt-4o')
+        if hasattr(llm, 'model'):  # langchainのChatOpenAI
+            model = getattr(llm, 'model', model)
+        if usage:
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            total_tokens = usage.get('total_tokens', prompt_tokens + completion_tokens)
+            record_token_usage(model, prompt_tokens, completion_tokens, total_tokens)
+        # summary抽出
+        if hasattr(result, "content"):
+            summary = str(result.content).strip()
+        elif isinstance(result, list) and len(result) > 0:
+            first = result[0]
+            if hasattr(first, "content"):
+                summary = str(first.content).strip()
+            elif isinstance(first, dict) and "content" in first:
+                summary = str(first.get("content", "")).strip()
+            elif isinstance(first, str):
+                summary = first.strip()
+            else:
+                summary = str(first).strip()
+        elif isinstance(result, dict) and "content" in result:
+            summary = str(result.get("content", "")).strip()
+        elif isinstance(result, str):
+            summary = result.strip()
+        else:
+            summary = str(result).strip()
+        print("summary生成結果:", summary)
+        return jsonify({'summary': summary}), 200
     except Exception as e:
+        print("Error in /summarize:", e)
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'要約生成に失敗しました: {str(e)}'}), 500
+
+@app.route('/api/command_dictionary', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def command_dictionary():
+    if request.method == 'GET':
+        return jsonify(load_dict(COMMAND_DICT_PATH)), 200
+    elif request.method == 'POST':
+        data = request.get_json() or {}
+        word = data.get('word', '').strip()
+        if not word:
+            return jsonify({'error': '単語が空です'}), 400
+        dict_data = load_dict(COMMAND_DICT_PATH)
+        if word in dict_data:
+            return jsonify({'error': '既に登録されています'}), 400
+        dict_data.append(word)
+        save_dict(COMMAND_DICT_PATH, dict_data)
+        return jsonify({'message': '登録しました', 'word': word}), 201
+    elif request.method == 'PUT':
+        data = request.get_json() or {}
+        old_word = data.get('old_word', '').strip()
+        new_word = data.get('new_word', '').strip()
+        dict_data = load_dict(COMMAND_DICT_PATH)
+        if old_word not in dict_data:
+            return jsonify({'error': '元の単語が見つかりません'}), 404
+        if new_word in dict_data:
+            return jsonify({'error': '新しい単語が既に存在します'}), 400
+        dict_data[dict_data.index(old_word)] = new_word
+        save_dict(COMMAND_DICT_PATH, dict_data)
+        return jsonify({'message': '編集しました', 'old_word': old_word, 'new_word': new_word}), 200
+    elif request.method == 'DELETE':
+        data = request.get_json() or {}
+        word = data.get('word', '').strip()
+        dict_data = load_dict(COMMAND_DICT_PATH)
+        if word not in dict_data:
+            return jsonify({'error': '単語が見つかりません'}), 404
+        dict_data.remove(word)
+        save_dict(COMMAND_DICT_PATH, dict_data)
+        return jsonify({'message': '削除しました', 'word': word}), 200
+    return jsonify({'error': '不正なメソッドです'}), 405
+
+@app.route('/api/word_dictionary', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def word_dictionary():
+    if request.method == 'GET':
+        return jsonify(load_dict(WORD_DICT_PATH)), 200
+    elif request.method == 'POST':
+        data = request.get_json() or {}
+        word = data.get('word', '').strip()
+        if not word:
+            return jsonify({'error': '単語が空です'}), 400
+        dict_data = load_dict(WORD_DICT_PATH)
+        if word in dict_data:
+            return jsonify({'error': '既に登録されています'}), 400
+        dict_data.append(word)
+        save_dict(WORD_DICT_PATH, dict_data)
+        return jsonify({'message': '登録しました', 'word': word}), 201
+    elif request.method == 'PUT':
+        data = request.get_json() or {}
+        old_word = data.get('old_word', '').strip()
+        new_word = data.get('new_word', '').strip()
+        dict_data = load_dict(WORD_DICT_PATH)
+        if old_word not in dict_data:
+            return jsonify({'error': '元の単語が見つかりません'}), 404
+        if new_word in dict_data:
+            return jsonify({'error': '新しい単語が既に存在します'}), 400
+        dict_data[dict_data.index(old_word)] = new_word
+        save_dict(WORD_DICT_PATH, dict_data)
+        return jsonify({'message': '編集しました', 'old_word': old_word, 'new_word': new_word}), 200
+    elif request.method == 'DELETE':
+        data = request.get_json() or {}
+        word = data.get('word', '').strip()
+        dict_data = load_dict(WORD_DICT_PATH)
+        if word not in dict_data:
+            return jsonify({'error': '単語が見つかりません'}), 404
+        dict_data.remove(word)
+        save_dict(WORD_DICT_PATH, dict_data)
+        return jsonify({'message': '削除しました', 'word': word}), 200
+    return jsonify({'error': '不正なメソッドです'}), 405
+
+@app.route('/api/token_usage', methods=['GET'])
+def api_token_usage():
+    usage = load_token_usage()
+    total_tokens = sum(u['total_tokens'] for u in usage)
+    total_cost = sum(u['cost'] for u in usage)
+    return jsonify({
+        'usage': usage,
+        'total_tokens': total_tokens,
+        'total_cost': total_cost
+    })
 
 def transcribe_audio_chunk_async(filepath, session_id, chunk_index, transcription_folder, client_sid):
     """
@@ -206,22 +386,56 @@ def transcribe_audio_chunk_async(filepath, session_id, chunk_index, transcriptio
         if client_sid:
             socketio.emit('transcription_status', {'status': 'chunk_failed', 'session_id': session_id, 'chunk_index': chunk_index})
 
+def generate_tag(text):
+    """
+    LLMで内容から短いタグ（キーワード）を生成する。
+    """
+    if not LANGCHAIN_AVAILABLE:
+        return "untagged"
+    try:
+        prompt = PromptTemplate(
+            input_variables=["text"],
+            template="""以下の日本語テキストの内容を一言で表す短いタグ（2〜5文字程度）を1つだけ出力してください。\n{text}\nタグ："""
+        )
+        llm = ChatOpenAI(temperature=0.2, model="gpt-3.5-turbo")
+        result = llm.invoke(prompt.format(text=text), max_tokens=16)
+        if hasattr(result, "content"):
+            tag = str(result.content).strip().replace("\n", "")
+        elif isinstance(result, str):
+            tag = result.strip().replace("\n", "")
+        else:
+            tag = str(result).strip().replace("\n", "")
+        # 記号や空白を除去
+        import re
+        tag = re.sub(r"[^\w\u3040-\u30ff\u4e00-\u9fff]", "", tag)
+        if not tag:
+            tag = "untagged"
+        return tag
+    except Exception as e:
+        print("タグ生成失敗:", e)
+        return "untagged"
+
+@app.route('/generate_tag', methods=['POST'])
+def api_generate_tag():
+    data = request.get_json() or {}
+    text = data.get('text', '')
+    if not text:
+        return jsonify({'error': 'テキストがありません'}), 400
+    tag = generate_tag(text)
+    return jsonify({'tag': tag}), 200
 
 def combine_transcriptions_async(session_id, transcription_folder, recordings_root, client_sid):
     """
     指定されたセッションIDに紐づく全ての文字起こしチャンクを結合し、最終的なテキストファイルを生成します。
+    ファイル名はタイムスタンプ＋内容タグとする。
     """
     if client_sid:
         socketio.emit('transcription_status', {'status': 'combining_results', 'session_id': session_id})
-
-    combined_text_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{session_id}.txt"
-    combined_filepath = os.path.join(recordings_root, combined_text_filename)
 
     # セッションIDに紐づく文字起こしチャンクファイルを検索し、ソートして結合
     session_transcriptions = []
     session_transcription_dir = os.path.join(transcription_folder, secure_filename(session_id))
     if os.path.exists(session_transcription_dir):
-        # chunkN.txt の N でソートするためにファイル名をパース
         files = []
         for f in os.listdir(session_transcription_dir):
             if f.startswith(f"{session_id}_chunk") and f.endswith(".txt"):
@@ -230,16 +444,17 @@ def combine_transcriptions_async(session_id, transcription_folder, recordings_ro
                     chunk_num = int(chunk_num_str)
                     files.append((chunk_num, os.path.join(session_transcription_dir, f)))
                 except ValueError:
-                    continue # Skip files that don't match the expected naming convention
-
-        files.sort() # ソート
-
+                    continue
+        files.sort()
         for _, filepath in files:
             with open(filepath, 'r', encoding='utf-8') as f:
                 session_transcriptions.append(f.read())
-        
-        # 結合して最終ファイルに書き込む
         final_text = "\n".join(session_transcriptions)
+        # タグ生成
+        tag = generate_tag(final_text)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        combined_text_filename = f"{timestamp}_{tag}.txt"
+        combined_filepath = os.path.join(recordings_root, combined_text_filename)
         with open(combined_filepath, 'w', encoding='utf-8') as f:
             f.write(final_text)
         print(f"Combined transcription saved: {combined_filepath}")
