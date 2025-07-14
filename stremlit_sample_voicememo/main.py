@@ -1,48 +1,23 @@
-# 音声で入力する
+# 音声で入力する（WebRTC方式）
 
-######## Streamlitの設定 ########
 import streamlit as st
 import time
 import os
 from dotenv import load_dotenv
 import openai
-import pyaudio
-import wave
 import whisper
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
+import av
+import numpy as np
+import wave
+import uuid
 
 # .envからAPIキーを読み込む
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-st.title("音声で入力する（自動文字起こし＆要約）")
-st.write("マイクに話しかけてください。録音開始→10秒ごとに自動で文字起こし＆要約します。\n録音停止ボタンで手動停止も可能です。")
-
-# 録音関係の設定
-p = pyaudio.PyAudio()
-devices = []
-for i in range(p.get_device_count()):
-    info = p.get_device_info_by_index(i)
-    max_input_channels = info['maxInputChannels']
-    if isinstance(max_input_channels, str):
-        try:
-            max_input_channels = int(max_input_channels)
-        except Exception:
-            max_input_channels = 0
-    if max_input_channels > 0:
-        devices.append({
-            'id': i,
-            'name': info['name'],
-            'channels': max_input_channels
-        })
-
-if 'selected_device_id' not in st.session_state:
-    st.session_state['selected_device_id'] = devices[0]['id'] if devices else None
-
-device_options = [f"ID {d['id']}: {d['name']} (Channels: {d['channels']})" for d in devices]
-selected_option = st.selectbox("使用するマイクデバイスを選択してください", device_options, index=0)
-selected_index = device_options.index(selected_option)
-selected_device_id = devices[selected_index]['id']
-st.session_state['selected_device_id'] = selected_device_id
+st.title("音声で入力する（WebRTC自動文字起こし＆要約）")
+st.write("録音開始→10秒ごとに自動で文字起こし＆要約します。録音停止ボタンで手動停止も可能です。\n（WebRTC方式：ブラウザから直接録音できます）")
 
 # 録音状態管理
 if 'recording' not in st.session_state:
@@ -51,56 +26,76 @@ if 'transcripts' not in st.session_state:
     st.session_state['transcripts'] = []
 if 'summaries' not in st.session_state:
     st.session_state['summaries'] = []
+if 'audio_buffer' not in st.session_state:
+    st.session_state['audio_buffer'] = []
+if 'last_process_time' not in st.session_state:
+    st.session_state['last_process_time'] = time.time()
+if 'audio_level' not in st.session_state:
+    st.session_state['audio_level'] = 0.0
 
-# 録音UI
+class AudioRecorder(AudioProcessorBase):
+    def __init__(self):
+        self.frames = []
+        self.level = 0.0
+    def recv_audio(self, frame: av.AudioFrame) -> av.AudioFrame:
+        pcm = frame.to_ndarray()
+        if st.session_state['recording']:
+            self.frames.append(pcm)
+        rms = np.sqrt(np.mean(np.square(pcm.astype(np.float32))))
+        self.level = rms
+        st.session_state['audio_level'] = float(rms)
+        return frame
+
+recorder_ctx = webrtc_streamer(
+    key="audio-webrtc",
+    mode=WebRtcMode.SENDRECV,
+    audio_receiver_size=1024,
+    audio_processor_factory=AudioRecorder,
+    media_stream_constraints={"audio": True, "video": False},
+)
+
 col1, col2 = st.columns(2)
 with col1:
     if st.button("録音開始", disabled=st.session_state['recording']):
         st.session_state['recording'] = True
         st.session_state['transcripts'] = []
         st.session_state['summaries'] = []
+        st.session_state['audio_buffer'] = []
+        st.session_state['last_process_time'] = time.time()
+        if recorder_ctx and recorder_ctx.audio_processor:
+            recorder_ctx.audio_processor.frames = []
 with col2:
     if st.button("録音停止", disabled=not st.session_state['recording']):
         st.session_state['recording'] = False
 
-if st.session_state['recording']:
-    st.markdown("<h2 style='color:red;'>● 録音中...</h2>", unsafe_allow_html=True)
-else:
-    st.markdown("<h2 style='color:gray;'>録音停止中</h2>", unsafe_allow_html=True)
+# 録音中インジケータと音量メーターの表示
+if recorder_ctx and recorder_ctx.state.playing:
+    if st.session_state['recording']:
+        st.markdown("<h2 style='color:red;'>● 録音中</h2>", unsafe_allow_html=True)
+    else:
+        st.markdown("<h2 style='color:gray;'>録音停止中</h2>", unsafe_allow_html=True)
+    audio_level = st.session_state.get("audio_level", 0.0)
+    st.progress(min(int(audio_level * 100), 100), text=f"音声入力レベル: {audio_level:.2f}")
 
-# 録音・文字起こし・要約の自動ループ
-if st.session_state['recording']:
-    chunk = 1024
-    format = pyaudio.paInt16
-    channels = 1
-    rate = 44100
-    record_seconds = 10
-    output_filename = "output.wav"
-    st.info("10秒ごとに自動で録音・文字起こし・要約します。録音停止ボタンで終了できます。")
-    # 10秒録音
-    try:
-        stream = p.open(format=format,
-                        channels=channels,
-                        rate=rate,
-                        input=True,
-                        input_device_index=selected_device_id,
-                        frames_per_buffer=chunk)
-        frames = []
-        for i in range(0, int(rate / chunk * record_seconds)):
-            data = stream.read(chunk)
-            frames.append(data)
-        stream.stop_stream()
-        stream.close()
-        wf = wave.open(output_filename, 'wb')
-        wf.setnchannels(channels)
-        wf.setsampwidth(p.get_sample_size(format))
-        wf.setframerate(rate)
-        wf.writeframes(b''.join(frames))
-        wf.close()
-        st.success(f"録音完了: {output_filename}")
+# 10秒ごとに録音バッファを処理
+if recorder_ctx and recorder_ctx.audio_processor and st.session_state['recording']:
+    now = time.time()
+    # 10秒ごと、またはバッファが十分たまったら処理
+    if (now - st.session_state['last_process_time'] > 10) and len(recorder_ctx.audio_processor.frames) > 0:
+        frames = recorder_ctx.audio_processor.frames
+        session_id = str(uuid.uuid4())
+        temp_dir = "audio_chunks"
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_path = os.path.join(temp_dir, f"{session_id}.wav")
+        audio = np.concatenate(frames)
+        with wave.open(temp_path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(audio.tobytes())
         # Whisperで文字起こし
         model = whisper.load_model("base")
-        result = model.transcribe(output_filename, language="ja")
+        result = model.transcribe(temp_path, language="ja")
         text = result["text"]
         st.session_state['transcripts'].append(text)
         st.subheader("文字起こし結果（最新）")
@@ -125,10 +120,10 @@ if st.session_state['recording']:
                 st.warning("要約の取得に失敗しました。")
         else:
             st.warning("OpenAI APIキーが設定されていません。要約はスキップされます。")
-        # 10秒ごとに自動で繰り返す
+        # バッファとタイマーをリセット
+        recorder_ctx.audio_processor.frames = []
+        st.session_state['last_process_time'] = now
         st.rerun()
-    except Exception as e:
-        st.error(f"録音・文字起こし・要約中にエラーが発生しました: {e}")
 
 # 履歴表示
 if st.session_state['transcripts']:
