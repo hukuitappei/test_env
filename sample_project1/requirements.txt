@@ -3,4 +3,8 @@ SpeechRecognition
 Flask-SocketIO
 langchain
 openai
-python-dotenv 
+python-dotenv
+streamlit
+streamlit-webrtc
+av
+numpy
