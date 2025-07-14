@@ -33,6 +33,12 @@ if 'last_process_time' not in st.session_state:
 if 'audio_level' not in st.session_state:
     st.session_state['audio_level'] = 0.0
 
+# デバッグ用: フレーム数・状態表示用セッション変数
+if 'recv_audio_count' not in st.session_state:
+    st.session_state['recv_audio_count'] = 0
+if 'last_frame_count' not in st.session_state:
+    st.session_state['last_frame_count'] = 0
+
 class AudioRecorder(AudioProcessorBase):
     def __init__(self):
         self.frames = []
@@ -41,6 +47,7 @@ class AudioRecorder(AudioProcessorBase):
         pcm = frame.to_ndarray()
         if st.session_state['recording']:
             self.frames.append(pcm)
+        st.session_state['recv_audio_count'] += 1
         rms = np.sqrt(np.mean(np.square(pcm.astype(np.float32))))
         self.level = rms
         st.session_state['audio_level'] = float(rms)
@@ -62,11 +69,29 @@ with col1:
         st.session_state['summaries'] = []
         st.session_state['audio_buffer'] = []
         st.session_state['last_process_time'] = time.time()
+        st.session_state['recv_audio_count'] = 0
+        st.session_state['last_frame_count'] = 0
         if recorder_ctx and recorder_ctx.audio_processor:
             recorder_ctx.audio_processor.frames = []
 with col2:
     if st.button("録音停止", disabled=not st.session_state['recording']):
         st.session_state['recording'] = False
+        if recorder_ctx and recorder_ctx.audio_processor:
+            st.session_state['last_frame_count'] = len(recorder_ctx.audio_processor.frames)
+            st.info(f"録音停止時のフレーム数: {st.session_state['last_frame_count']}")
+
+# デバッグ表示: WebRTC状態・フレーム数
+st.markdown("---")
+st.subheader("[デバッグ情報]")
+if recorder_ctx:
+    st.write(f"WebRTC state: {getattr(recorder_ctx.state, 'status', recorder_ctx.state)}")
+    if recorder_ctx.audio_processor:
+        st.write(f"AudioProcessor.framesの長さ: {len(recorder_ctx.audio_processor.frames)}")
+        st.write(f"recv_audio呼び出し回数: {st.session_state['recv_audio_count']}")
+    else:
+        st.write("AudioProcessor未初期化")
+else:
+    st.write("recorder_ctx未初期化")
 
 # 録音中インジケータと音量メーターの表示
 if recorder_ctx and recorder_ctx.state.playing:
