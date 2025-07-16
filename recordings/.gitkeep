@@ -1,0 +1,2 @@
+# This file ensures the recordings directory is tracked by Git
+# The directory itself will be pushed, but audio files (*.wav, *.mp3, *.m4a) will be ignored 

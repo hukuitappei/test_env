@@ -40,7 +40,8 @@ Thumbs.db
 .streamlit/
 
 # Recordings
-recordings/
+recordings/*
+!recordings/.gitkeep
 *.wav
 *.mp3
 *.m4a
