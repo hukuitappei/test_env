@@ -1,0 +1,4 @@
+streamlit>=1.28.0
+openai-whisper>=20231117
+pyaudio>=0.2.11
+numpy>=1.24.0 
