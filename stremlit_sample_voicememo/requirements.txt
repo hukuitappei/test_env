@@ -1,4 +1,11 @@
-torch
-openai-whisper
-openai
-python-dotenv 
+streamlit
+pyaudio
+websockets
+websocket-client
+asyncio
+numpy
+wave
+uuid
+whisper
+soundfile
+scipy 
