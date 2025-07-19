@@ -1,0 +1,49 @@
+{
+  "audio": {
+    "chunk_size": 1024,
+    "format": "paInt16",
+    "channels": 1,
+    "sample_rate": 44100,
+    "gain": 2.0,
+    "duration": 5
+  },
+  "whisper": {
+    "model_size": "base",
+    "language": "ja",
+    "temperature": 0.0,
+    "compression_ratio_threshold": 2.4,
+    "logprob_threshold": -1.0,
+    "no_speech_threshold": 0.6,
+    "condition_on_previous_text": true,
+    "initial_prompt": "これは日本語の音声です。"
+  },
+  "device": {
+    "selected_device_index": 1,
+    "selected_device_name": "ヘッドセット マイク (CORSAIR HS80 RGB US",
+    "auto_select_default": true,
+    "test_device_on_select": true
+  },
+  "ui": {
+    "show_advanced_options": false,
+    "auto_save_recordings": true,
+    "show_quality_analysis": true,
+    "show_level_monitoring": true,
+    "auto_start_recording": false,
+    "auto_recording_threshold": 300,
+    "auto_recording_delay": 1.0
+  },
+  "troubleshooting": {
+    "retry_count": 3,
+    "timeout_seconds": 10,
+    "enable_error_recovery": true,
+    "log_errors": true
+  },
+  "llm": {
+    "api_key": "",
+    "provider": "openai",
+    "model": "gpt-3.5-turbo",
+    "temperature": 0.3,
+    "max_tokens": 1000,
+    "enabled": false
+  }
+}
