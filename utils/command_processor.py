@@ -7,9 +7,8 @@ import streamlit as st
 class CommandProcessor:
     def __init__(self, commands_file="settings/commands.json"):
         self.commands_file = commands_file
-        self.commands = self.load_commands()
         
-        # デフォルトコマンド
+        # デフォルトコマンドを先に定義
         self.default_commands = {
             "箇条書き": {
                 "description": "文字起こし結果を箇条書きに変換",
@@ -48,6 +47,9 @@ class CommandProcessor:
                 "enabled": True
             }
         }
+        
+        # コマンドを読み込み（default_commands定義後）
+        self.commands = self.load_commands()
     
     def load_commands(self) -> Dict:
         """コマンドを読み込み"""

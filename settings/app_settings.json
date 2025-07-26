@@ -54,11 +54,11 @@
       "stop_recording": "F10",
       "transcribe": "F11",
       "clear_text": "F12",
-      "save_recording": "Ctrl+S",
-      "open_settings": "F1",
-      "open_dictionary": "F1",
+      "save_recording": "Ctrl+Shift+S",
+      "open_settings": "Ctrl+Shift+O",
+      "open_dictionary": "Ctrl+Shift+D",
       "open_commands": "Ctrl+Shift+C",
-      "voice_correction": "Ctrl+V"
+      "voice_correction": "Ctrl+Shift+V"
     },
     "modifiers": {
       "ctrl": true,

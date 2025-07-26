@@ -321,11 +321,99 @@ with col3:
 
 # ショートカットキー情報表示
 if SHORTCUT_AVAILABLE and st.session_state.shortcut_handler.is_enabled():
-    st.info("⌨️ **ショートカットキー**: F9=録音開始, F10=録音停止, F11=文字起こし, F12=テキストクリア")
+    st.info("⌨️ **ショートカットキー**: F9=録音開始, F10=録音停止, F11=文字起こし, F12=テキストクリア, Ctrl+Shift+S=保存, Ctrl+Shift+O=設定")
+    
+    # ショートカットJavaScriptコードを追加
+    shortcuts = st.session_state.shortcut_handler.get_all_shortcuts()
+    js_code = create_shortcut_javascript(shortcuts)
+    st.components.v1.html(js_code, height=0)
+    
+    # ショートカットイベントを受け取るためのコンポーネント
+    # JavaScriptからグローバル変数を読み取る
+    js_code_reader = """
+    <script>
+    if (window.shortcutEventData) {
+        const data = window.shortcutEventData;
+        window.shortcutEventData = null; // 一度使用したらクリア
+        // Streamlitにデータを送信
+        if (window.parent && window.parent.Streamlit) {
+            window.parent.Streamlit.setSessionState({
+                shortcut_event: data
+            });
+        }
+    }
+    </script>
+    """
+    st.components.v1.html(js_code_reader, height=0)
 
 # ショートカットイベントの処理
 if SHORTCUT_AVAILABLE and 'shortcut_event' in st.session_state:
-    handle_shortcut_event(st.session_state['shortcut_event'], st.session_state.shortcut_handler)
+    action = handle_shortcut_event(st.session_state['shortcut_event'], st.session_state.shortcut_handler)
+    if action:
+        # ショートカットアクションを実行
+        if action == 'start_recording':
+            if 'selected_device' in st.session_state and not st.session_state.get('is_recording', False):
+                st.session_state['is_recording'] = True
+                st.success("🎤 録音を開始しました (F9)")
+                st.rerun()
+        elif action == 'stop_recording':
+            if st.session_state.get('is_recording', False):
+                st.session_state['is_recording'] = False
+                st.success("⏹️ 録音を停止しました (F10)")
+                st.rerun()
+        elif action == 'transcribe':
+            if 'recorded_frames' in st.session_state and st.session_state['recorded_frames']:
+                # 文字起こし実行
+                if 'saved_audio_file' in st.session_state and st.session_state['saved_audio_file']:
+                    filename = st.session_state['saved_audio_file']
+                    transcription = transcribe_audio(filename)
+                else:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    temp_filename = f"temp_recording_{timestamp}.wav"
+                    if save_audio_file(st.session_state['recorded_frames'], st.session_state['recorded_rate'], temp_filename):
+                        transcription = transcribe_audio(temp_filename)
+                        try:
+                            os.remove(temp_filename)
+                        except:
+                            pass
+                    else:
+                        st.error("一時ファイルの保存に失敗しました")
+                        st.stop()
+                st.session_state['current_transcription'] = transcription
+                st.success("📝 文字起こしを実行しました (F11)")
+                st.rerun()
+            else:
+                st.warning("⚠️ 録音データがありません")
+        elif action == 'clear_text':
+            st.session_state['current_transcription'] = ""
+            st.success("🗑️ テキストをクリアしました (F12)")
+            st.rerun()
+        elif action == 'save_recording':
+            if 'recorded_frames' in st.session_state and st.session_state['recorded_frames']:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                device_name = st.session_state.get('recorded_device', 'unknown').replace(" ", "_").replace("(", "").replace(")", "")
+                filename = f"recordings/recording_{device_name}_{timestamp}.wav"
+                if save_audio_file(st.session_state['recorded_frames'], st.session_state['recorded_rate'], filename):
+                    st.session_state['saved_audio_file'] = filename
+                    st.success(f"💾 録音を保存しました: {filename} (Ctrl+Shift+S)")
+                else:
+                    st.error("録音の保存に失敗しました")
+            else:
+                st.warning("⚠️ 保存する録音データがありません")
+        elif action == 'open_settings':
+            st.session_state['show_settings'] = True
+            st.success("⚙️ 設定を開きました (Ctrl+Shift+O)")
+            st.rerun()
+        elif action == 'open_dictionary':
+            st.success("📖 辞書機能を開きました (Ctrl+Shift+D)")
+            # 辞書ページへの遷移処理をここに追加
+        elif action == 'open_commands':
+            st.success("⚡ コマンド機能を開きました (Ctrl+Shift+C)")
+            # コマンドページへの遷移処理をここに追加
+        elif action == 'voice_correction':
+            st.success("🎤 音声修正機能を開きました (Ctrl+Shift+V)")
+            # 音声修正機能の処理をここに追加
+    
     del st.session_state['shortcut_event']
 
 # 新機能の初期化（条件付き）

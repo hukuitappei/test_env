@@ -424,15 +424,15 @@ def render_settings_save_button(settings: Dict[str, Any]) -> None:
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("💾 設定を保存", type="primary", key="save_settings"):
+        if st.button("💾 設定を保存", type="primary", key="ui_save_settings"):
             if save_settings(settings):
                 st.success("✅ 設定を保存しました")
             else:
                 st.error("❌ 設定の保存に失敗しました")
     
     with col2:
-        if st.button("🔄 設定をリセット", key="reset_settings"):
-            if st.button("本当にリセットしますか？", key="confirm_reset"):
+        if st.button("🔄 設定をリセット", key="ui_reset_settings"):
+            if st.button("本当にリセットしますか？", key="ui_confirm_reset"):
                 from .settings_manager import reset_settings
                 if reset_settings():
                     st.success("✅ 設定をリセットしました")

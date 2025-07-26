@@ -1,0 +1,45 @@
+{
+  "commands": {
+    "箇条書き": {
+      "description": "文字起こし結果を箇条書きに変換",
+      "llm_prompt": "以下の文字起こし結果を箇条書きに変換してください：\n\n{text}",
+      "output_format": "bullet_points",
+      "enabled": true
+    },
+    "要約": {
+      "description": "文字起こし結果を要約",
+      "llm_prompt": "以下の文字起こし結果を簡潔に要約してください：\n\n{text}",
+      "output_format": "summary",
+      "enabled": true
+    },
+    "テキストファイル出力": {
+      "description": "文字起こし結果をテキストファイルとして保存",
+      "llm_prompt": "以下の文字起こし結果を整理してテキストファイル用にフォーマットしてください：\n\n{text}",
+      "output_format": "text_file",
+      "enabled": true
+    },
+    "LLM要約ファイル出力": {
+      "description": "LLM要約結果をテキストファイルとして保存",
+      "llm_prompt": "以下の文字起こし結果を詳細に分析し、構造化された要約を作成してください：\n\n{text}",
+      "output_format": "llm_summary_file",
+      "enabled": true
+    },
+    "キーポイント抽出": {
+      "description": "重要なポイントを抽出",
+      "llm_prompt": "以下の文字起こし結果から重要なポイントを抽出してください：\n\n{text}",
+      "output_format": "key_points",
+      "enabled": true
+    },
+    "アクションアイテム抽出": {
+      "description": "アクションアイテムを抽出",
+      "llm_prompt": "以下の文字起こし結果からアクションアイテム（タスク）を抽出してください：\n\n{text}",
+      "output_format": "action_items",
+      "enabled": true
+    }
+  },
+  "metadata": {
+    "created_at": "2025-07-26T17:23:56.790514",
+    "last_updated": "2025-07-26T17:23:56.790514",
+    "total_commands": 6
+  }
+}

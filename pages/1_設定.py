@@ -608,17 +608,17 @@ st.subheader("💾 設定の保存・管理")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("💾 設定を保存", type="primary"):
+    if st.button("💾 設定を保存", type="primary", key="save_settings_btn"):
         if save_settings(settings):
             st.success("設定を保存しました")
 
 with col2:
-    if st.button("🔄 デフォルトに戻す"):
+    if st.button("🔄 デフォルトに戻す", key="reset_settings_btn"):
         settings = DEFAULT_SETTINGS.copy()
         st.success("設定をデフォルトに戻しました")
 
 with col3:
-    if st.button("📋 設定をエクスポート"):
+    if st.button("📋 設定をエクスポート", key="export_settings_btn"):
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             export_file = f"settings/exported_settings_{timestamp}.json"
@@ -641,7 +641,7 @@ uploaded_settings = st.file_uploader(
 if uploaded_settings is not None:
     try:
         imported_settings = json.load(uploaded_settings)
-        if st.button("📥 インポートして適用"):
+        if st.button("📥 インポートして適用", key="import_settings_btn"):
             settings.update(imported_settings)
             if save_settings(settings):
                 st.success("設定をインポートしました")

@@ -38,11 +38,11 @@ class ShortcutHandler:
                 "stop_recording": "F10",
                 "transcribe": "F11",
                 "clear_text": "F12",
-                "save_recording": "Ctrl+S",
-                "open_settings": "Ctrl+,",
-                "open_dictionary": "Ctrl+D",
+                "save_recording": "Ctrl+Shift+S",
+                "open_settings": "Ctrl+Shift+O",
+                "open_dictionary": "Ctrl+Shift+D",
                 "open_commands": "Ctrl+Shift+C",
-                "voice_correction": "Ctrl+V"
+                "voice_correction": "Ctrl+Shift+V"
             },
             "modifiers": {
                 "ctrl": True,
@@ -141,13 +141,16 @@ def create_shortcut_javascript(shortcuts: Dict[str, str]) -> str:
                     timestamp: Date.now()
                 }};
                 
-                // Streamlitにデータを送信
-                if (window.parent && window.parent.postMessage) {{
-                    window.parent.postMessage({{
-                        type: 'streamlit:setComponentValue',
-                        value: JSON.stringify(data)
-                    }}, '*');
-                }}
+                // Streamlitのセッション状態を更新
+                const eventData = JSON.stringify(data);
+                
+                // グローバル変数に設定（Streamlitが読み取る）
+                window.shortcutEventData = eventData;
+                
+                // ページをリロードしてStreamlitに変更を通知
+                setTimeout(() => {{
+                    window.location.reload();
+                }}, 100);
                 
                 // 視覚的フィードバック
                 showShortcutFeedback(action, keyCombo);
@@ -303,13 +306,15 @@ def create_shortcut_settings_ui(shortcut_handler: ShortcutHandler) -> None:
         'voice_correction': '音声修正'
     }
     
-    # よく使うキーの候補
+    # よく使うキーの候補（Windows標準と被らない安全なキー）
     common_keys = [
         'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
-        'Ctrl+S', 'Ctrl+O', 'Ctrl+N', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+X', 'Ctrl+C', 'Ctrl+V',
-        'Ctrl+A', 'Ctrl+F', 'Ctrl+R', 'Ctrl+T', 'Ctrl+W', 'Ctrl+Q',
-        'Ctrl+Shift+S', 'Ctrl+Shift+O', 'Ctrl+Shift+N', 'Ctrl+Shift+C',
-        'Alt+R', 'Alt+T', 'Alt+S', 'Alt+D', 'Alt+C'
+        'Ctrl+Shift+S', 'Ctrl+Shift+O', 'Ctrl+Shift+N', 'Ctrl+Shift+C', 'Ctrl+Shift+V',
+        'Ctrl+Shift+D', 'Ctrl+Shift+F', 'Ctrl+Shift+R', 'Ctrl+Shift+T', 'Ctrl+Shift+W',
+        'Ctrl+Shift+Q', 'Ctrl+Shift+A', 'Ctrl+Shift+X', 'Ctrl+Shift+Y', 'Ctrl+Shift+Z',
+        'Alt+Shift+S', 'Alt+Shift+O', 'Alt+Shift+N', 'Alt+Shift+C', 'Alt+Shift+V',
+        'Alt+Shift+D', 'Alt+Shift+F', 'Alt+Shift+R', 'Alt+Shift+T', 'Alt+Shift+W',
+        'Alt+Shift+Q', 'Alt+Shift+A', 'Alt+Shift+X', 'Alt+Shift+Y', 'Alt+Shift+Z'
     ]
     
     # 各ショートカットの設定
@@ -349,7 +354,7 @@ def create_shortcut_settings_ui(shortcut_handler: ShortcutHandler) -> None:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("🔄 デフォルトに戻す", type="secondary"):
+        if st.button("🔄 デフォルトに戻す", type="secondary", key="shortcut_reset_defaults_btn"):
             if shortcut_handler.reset_to_defaults():
                 st.success("ショートカットをデフォルトに戻しました")
                 st.rerun()
@@ -357,7 +362,7 @@ def create_shortcut_settings_ui(shortcut_handler: ShortcutHandler) -> None:
                 st.error("リセットに失敗しました")
     
     with col2:
-        if st.button("📋 ショートカット一覧表示"):
+        if st.button("📋 ショートカット一覧表示", key="shortcut_show_list_btn"):
             shortcuts = shortcut_handler.get_all_shortcuts()
             st.write("**現在のショートカット一覧:**")
             for action, key in shortcuts.items():
@@ -365,23 +370,23 @@ def create_shortcut_settings_ui(shortcut_handler: ShortcutHandler) -> None:
                 st.write(f"• {action_name}: `{key}`")
     
     with col3:
-        if st.button("❓ ヘルプ表示"):
+        if st.button("❓ ヘルプ表示", key="shortcut_help_btn"):
             st.info("""
             **ショートカットキーの使い方:**
             
-            • **F1**: ショートカットヘルプを表示
             • **F9**: 録音開始
             • **F10**: 録音停止  
             • **F11**: 文字起こし実行
             • **F12**: テキストクリア
-            • **Ctrl+S**: 録音保存
-            • **Ctrl+,**: 設定を開く
-            • **Ctrl+D**: 辞書を開く
+            • **Ctrl+Shift+S**: 録音保存
+            • **Ctrl+Shift+O**: 設定を開く
+            • **Ctrl+Shift+D**: 辞書を開く
             • **Ctrl+Shift+C**: コマンドを開く
-            • **Ctrl+V**: 音声修正
+            • **Ctrl+Shift+V**: 音声修正
             
-            **カスタムショートカット:**
-            上記の設定で各機能のショートカットを変更できます。
+            **安全なショートカット:**
+            上記のショートカットはWindows標準のキーと被らないよう設計されています。
+            必要に応じて設定画面で変更できます。
             """)
 
 def handle_shortcut_event(shortcut_handler: ShortcutHandler, event_data: str) -> Optional[str]:
