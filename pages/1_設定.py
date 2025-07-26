@@ -9,7 +9,9 @@ import sys
 try:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
     from error_handler import PyAudioErrorHandler, DeviceTester, check_windows_microphone_permissions, get_audio_device_diagnostics
+    from shortcut_handler import ShortcutHandler, create_shortcut_settings_ui
     ERROR_HANDLER_AVAILABLE = True
+    SHORTCUT_HANDLER_AVAILABLE = True
 except ImportError:
     # エラーハンドリングモジュールがない場合のフォールバック
     ERROR_HANDLER_AVAILABLE = False
@@ -44,6 +46,8 @@ except ImportError:
     
     def get_audio_device_diagnostics():
         return {'total_devices': 0, 'errors': ['診断機能が利用できません']}
+    
+    SHORTCUT_HANDLER_AVAILABLE = False
 
 st.set_page_config(page_title="設定", page_icon="⚙️", layout="wide")
 st.title("⚙️ 設定")
@@ -204,16 +208,22 @@ def test_device_access(device_index, settings):
 settings = load_settings()
 
 # タブ作成
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab_names = [
     "🎤 録音設定", 
     "🤖 Whisper設定", 
     "🔧 デバイス設定", 
     "🎨 UI設定", 
     "🔧 トラブルシューティング",
     "🔍 システム診断"
-])
+]
 
-with tab1:
+# ショートカットハンドラーが利用可能な場合、ショートカット設定タブを追加
+if SHORTCUT_HANDLER_AVAILABLE:
+    tab_names.append("⌨️ ショートカット設定")
+
+tabs = st.tabs(tab_names)
+
+with tabs[0]:
     st.subheader("🎤 録音設定")
     
     col1, col2 = st.columns(2)
@@ -260,7 +270,7 @@ with tab1:
             help="音声レベルを上げる倍率"
         )
 
-with tab2:
+with tabs[1]:
     st.subheader("🤖 Whisper設定")
     
     col1, col2 = st.columns(2)
@@ -331,7 +341,7 @@ with tab2:
         help="音声認識の初期ヒント"
     )
 
-with tab3:
+with tabs[2]:
     st.subheader("🔧 デバイス設定")
     
     # マイクデバイス一覧
@@ -414,7 +424,7 @@ with tab3:
     else:
         st.error("マイクデバイスが見つかりません")
 
-with tab4:
+with tabs[3]:
     st.subheader("🎨 UI設定")
     
     col1, col2 = st.columns(2)
@@ -447,7 +457,7 @@ with tab4:
             help="録音完了時に自動でファイルを保存"
         )
 
-with tab5:
+with tabs[4]:
     st.subheader("🔧 トラブルシューティング設定")
     
     col1, col2 = st.columns(2)
@@ -484,7 +494,7 @@ with tab5:
             help="エラーをログファイルに記録"
         )
 
-with tab6:
+with tabs[5]:
     st.subheader("🔍 システム診断")
     
     # 診断実行ボタン
@@ -580,6 +590,16 @@ with tab6:
                     st.info(rec)
             else:
                 st.success("現在の設定は適切です")
+
+# ショートカット設定タブ
+if SHORTCUT_HANDLER_AVAILABLE and len(tabs) > 6:
+    with tabs[6]:
+        try:
+            shortcut_handler = ShortcutHandler(SETTINGS_FILE)
+            create_shortcut_settings_ui(shortcut_handler)
+        except Exception as e:
+            st.error(f"ショートカット設定の読み込みエラー: {e}")
+            st.info("ショートカット機能を利用するには、shortcut_handler.pyが正しく配置されていることを確認してください。")
 
 # 設定の保存・リセット
 st.markdown("---")

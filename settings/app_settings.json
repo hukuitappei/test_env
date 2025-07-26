@@ -45,5 +45,25 @@
     "temperature": 0.3,
     "max_tokens": 1000,
     "enabled": false
+  },
+  "shortcuts": {
+    "enabled": true,
+    "global_hotkeys": true,
+    "keys": {
+      "start_recording": "F9",
+      "stop_recording": "F10",
+      "transcribe": "F11",
+      "clear_text": "F12",
+      "save_recording": "Ctrl+S",
+      "open_settings": "F1",
+      "open_dictionary": "F1",
+      "open_commands": "Ctrl+Shift+C",
+      "voice_correction": "Ctrl+V"
+    },
+    "modifiers": {
+      "ctrl": true,
+      "shift": false,
+      "alt": false
+    }
   }
 }

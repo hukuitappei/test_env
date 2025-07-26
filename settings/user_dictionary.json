@@ -1,0 +1,21 @@
+{
+  "categories": {
+    "技術用語": {
+      "description": "技術関連の用語",
+      "entries": {}
+    },
+    "略語": {
+      "description": "略語とその意味",
+      "entries": {}
+    },
+    "カスタム": {
+      "description": "ユーザー定義の用語",
+      "entries": {}
+    }
+  },
+  "metadata": {
+    "created_at": "2025-07-21T10:54:59.878126",
+    "last_updated": "2025-07-21T10:54:59.878126",
+    "total_entries": 0
+  }
+}
