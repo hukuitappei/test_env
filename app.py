@@ -168,82 +168,188 @@ recording_mode = st.radio(
     help="通常録音: ボタンを押してから指定時間録音\n自動録音: 音声レベルが一定以上になったら自動で録音開始"
 )
 
+# 録音時間の設定
+col1, col2 = st.columns(2)
+with col1:
+    recording_duration = st.number_input(
+        "録音時間（秒）",
+        min_value=1,
+        max_value=300,
+        value=settings['audio']['duration'],
+        help="録音する時間を秒単位で設定"
+    )
+    # 設定を更新
+    settings['audio']['duration'] = recording_duration
+    st.session_state['recording_duration'] = recording_duration
+
+with col2:
+    st.markdown(f"**現在の設定**: {recording_duration}秒")
+    if recording_duration < 5:
+        st.warning("⚠️ 短い録音時間は音声認識の精度に影響する可能性があります")
+    elif recording_duration > 60:
+        st.info("ℹ️ 長い録音時間は処理に時間がかかります")
+
 if 'selected_device' in st.session_state:
     selected = st.session_state['selected_device']
 else:
     selected = None
 
-# 録音中フラグ
+# 録音中フラグと録音開始時間
 if 'is_recording' not in st.session_state:
     st.session_state['is_recording'] = False
+if 'recording_start_time' not in st.session_state:
+    st.session_state['recording_start_time'] = None
+if 'recording_duration' not in st.session_state:
+    st.session_state['recording_duration'] = settings['audio']['duration']
 
 if recording_mode == "通常録音":
     if st.button("🎤 選択されたマイクで録音開始", type="primary", key="record_btn_normal"):
         st.session_state['is_recording'] = True
+        st.session_state['recording_start_time'] = datetime.now()
+        st.session_state['recording_duration'] = settings['audio']['duration']
         show_recording_animation()
         st.rerun()
     if st.session_state['is_recording']:
+        # 録音中の残り時間を計算・表示
+        if st.session_state['recording_start_time']:
+            elapsed_time = (datetime.now() - st.session_state['recording_start_time']).total_seconds()
+            remaining_time = max(0, st.session_state['recording_duration'] - elapsed_time)
+            
+            # 残り時間表示
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.markdown(f"### ⏱️ 録音中... 残り {remaining_time:.1f}秒")
+                progress = 1.0 - (remaining_time / st.session_state['recording_duration'])
+                st.progress(progress)
+                
+                # 録音停止ボタン
+                if st.button("⏹️ 録音停止", type="secondary", key="stop_recording_btn_normal"):
+                    st.session_state['is_recording'] = False
+                    st.session_state['recording_start_time'] = None
+                    st.rerun()
+                
+                # 録音時間が終了したら録音を停止
+                if remaining_time <= 0:
+                    st.session_state['is_recording'] = False
+                    st.session_state['recording_start_time'] = None
+                    st.rerun()
+        
         show_recording_animation()
-        # 録音処理
-        if whisper_model is None:
-            st.error("Whisperモデルが読み込まれていません。ページを再読み込みしてください。")
-        elif selected is not None:
+        
+        # 録音処理（非同期で実行）
+        if 'recording_completed' not in st.session_state:
+            st.session_state['recording_completed'] = False
+            
+        if not st.session_state['recording_completed'] and whisper_model is not None and selected is not None:
             try:
-                frames, rate = record_audio_with_device(settings['audio']['duration'], settings['audio']['gain'], selected['index'])
-                if frames and rate:
-                    st.session_state['recorded_frames'] = frames
-                    st.session_state['recorded_rate'] = rate
-                    st.session_state['recorded_device'] = selected['name']
-                    if settings['ui']['auto_save_recordings']:
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        device_name = selected['name'].replace(" ", "_").replace("(", "").replace(")", "")
-                        filename = f"recordings/recording_{device_name}_{timestamp}.wav"
-                        if save_audio_file(frames, rate, filename):
-                            st.session_state['saved_audio_file'] = filename
-                            st.session_state['audio_saved'] = True
+                with st.spinner("録音中..."):
+                    frames, rate = record_audio_with_device(settings['audio']['duration'], settings['audio']['gain'], selected['index'])
+                    if frames and rate:
+                        st.session_state['recorded_frames'] = frames
+                        st.session_state['recorded_rate'] = rate
+                        st.session_state['recorded_device'] = selected['name']
+                        if settings['ui']['auto_save_recordings']:
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            device_name = selected['name'].replace(" ", "_").replace("(", "").replace(")", "")
+                            filename = f"recordings/recording_{device_name}_{timestamp}.wav"
+                            if save_audio_file(frames, rate, filename):
+                                st.session_state['saved_audio_file'] = filename
+                                st.session_state['audio_saved'] = True
+                            else:
+                                st.session_state['audio_saved'] = False
                         else:
                             st.session_state['audio_saved'] = False
+                        st.session_state['recording_completed'] = True
                     else:
-                        st.session_state['audio_saved'] = False
-                else:
-                    st.error("録音データの取得に失敗しました")
+                        st.error("録音データの取得に失敗しました")
+                        st.session_state['is_recording'] = False
+                        st.session_state['recording_start_time'] = None
             except Exception as e:
                 st.error(f"録音エラー: {e}")
-        st.session_state['is_recording'] = False
-        st.rerun()
+                st.session_state['is_recording'] = False
+                st.session_state['recording_start_time'] = None
+        
+        # 録音完了時の処理
+        if st.session_state.get('recording_completed', False):
+            st.session_state['is_recording'] = False
+            st.session_state['recording_start_time'] = None
+            st.session_state['recording_completed'] = False
+            st.success("🎤 録音が完了しました！")
+            st.rerun()
 else:
     if st.button("🎤 音声レベル監視付き録音開始", type="primary", key="record_btn_auto"):
         st.session_state['is_recording'] = True
+        st.session_state['recording_start_time'] = datetime.now()
+        st.session_state['recording_duration'] = settings['audio']['duration']
         show_recording_animation()
         st.rerun()
     if st.session_state['is_recording']:
+        # 録音中の残り時間を計算・表示
+        if st.session_state['recording_start_time']:
+            elapsed_time = (datetime.now() - st.session_state['recording_start_time']).total_seconds()
+            remaining_time = max(0, st.session_state['recording_duration'] - elapsed_time)
+            
+            # 残り時間表示
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.markdown(f"### ⏱️ 録音中... 残り {remaining_time:.1f}秒")
+                progress = 1.0 - (remaining_time / st.session_state['recording_duration'])
+                st.progress(progress)
+                
+                # 録音停止ボタン
+                if st.button("⏹️ 録音停止", type="secondary", key="stop_recording_btn_auto"):
+                    st.session_state['is_recording'] = False
+                    st.session_state['recording_start_time'] = None
+                    st.rerun()
+                
+                # 録音時間が終了したら録音を停止
+                if remaining_time <= 0:
+                    st.session_state['is_recording'] = False
+                    st.session_state['recording_start_time'] = None
+                    st.rerun()
+        
         show_recording_animation()
-        if whisper_model is None:
-            st.error("Whisperモデルが読み込まれていません。ページを再読み込みしてください。")
-        elif selected is not None:
+        
+        # 録音処理（非同期で実行）
+        if 'recording_completed' not in st.session_state:
+            st.session_state['recording_completed'] = False
+            
+        if not st.session_state['recording_completed'] and whisper_model is not None and selected is not None:
             try:
-                frames, rate = auto_record_with_level_monitoring(selected['index'], settings['audio']['duration'], settings['audio']['gain'])
-                if frames and rate:
-                    st.session_state['recorded_frames'] = frames
-                    st.session_state['recorded_rate'] = rate
-                    st.session_state['recorded_device'] = selected['name']
-                    if settings['ui']['auto_save_recordings']:
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        device_name = selected['name'].replace(" ", "_").replace("(", "").replace(")", "")
-                        filename = f"recordings/recording_{device_name}_{timestamp}.wav"
-                        if save_audio_file(frames, rate, filename):
-                            st.session_state['saved_audio_file'] = filename
-                            st.session_state['audio_saved'] = True
+                with st.spinner("録音中..."):
+                    frames, rate = auto_record_with_level_monitoring(selected['index'], settings['audio']['duration'], settings['audio']['gain'])
+                    if frames and rate:
+                        st.session_state['recorded_frames'] = frames
+                        st.session_state['recorded_rate'] = rate
+                        st.session_state['recorded_device'] = selected['name']
+                        if settings['ui']['auto_save_recordings']:
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            device_name = selected['name'].replace(" ", "_").replace("(", "").replace(")", "")
+                            filename = f"recordings/recording_{device_name}_{timestamp}.wav"
+                            if save_audio_file(frames, rate, filename):
+                                st.session_state['saved_audio_file'] = filename
+                                st.session_state['audio_saved'] = True
+                            else:
+                                st.session_state['audio_saved'] = False
                         else:
                             st.session_state['audio_saved'] = False
+                        st.session_state['recording_completed'] = True
                     else:
-                        st.session_state['audio_saved'] = False
-                else:
-                    st.error("録音データの取得に失敗しました")
+                        st.error("録音データの取得に失敗しました")
+                        st.session_state['is_recording'] = False
+                        st.session_state['recording_start_time'] = None
             except Exception as e:
                 st.error(f"録音エラー: {e}")
-        st.session_state['is_recording'] = False
-        st.rerun()
+                st.session_state['is_recording'] = False
+                st.session_state['recording_start_time'] = None
+        
+        # 録音完了時の処理
+        if st.session_state.get('recording_completed', False):
+            st.session_state['is_recording'] = False
+            st.session_state['recording_start_time'] = None
+            st.session_state['recording_completed'] = False
+            st.success("🎤 録音が完了しました！")
+            st.rerun()
 
 # --- 文字起こしボタン（録音ボタンの直下） ---
 st.markdown("---")
