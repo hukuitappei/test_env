@@ -48,4 +48,13 @@ recordings/*
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Environment variables and secrets
+.env
+.env.local
+.env.production
+.env.development
+*.key
+*.pem
+secrets/ 

@@ -26,19 +26,18 @@ def send_to_llm(transcription_text: str, task: str = "summarize") -> str:
     if not settings['llm']['enabled']:
         return "LLM機能が無効になっています。設定画面で有効にしてください。"
     
-    api_key = settings['llm']['api_key']
     provider = settings['llm']['provider']
     model = settings['llm']['model']
     temperature = settings['llm']['temperature']
     max_tokens = settings['llm']['max_tokens']
     
-    # 環境変数からAPIキーを取得
+    # 環境変数からAPIキーを優先的に取得
+    api_key = os.getenv(f"{provider.upper()}_API_KEY", "")
     if not api_key:
-        env_api_key = os.getenv(f"{provider.upper()}_API_KEY", "")
-        if env_api_key:
-            api_key = env_api_key
-        else:
-            return "APIキーが設定されていません。設定画面でAPIキーを設定してください。"
+        # 環境変数がない場合は設定ファイルから取得（非推奨）
+        api_key = settings['llm']['api_key']
+        if not api_key:
+            return f"APIキーが設定されていません。環境変数 {provider.upper()}_API_KEY を設定するか、.envファイルを作成してください。"
     
     try:
         if provider == "openai" and openai:

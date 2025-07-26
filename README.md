@@ -88,6 +88,32 @@ Streamlitを使用した高機能な音声録音・文字起こしアプリケ�
 pip install -r requirements.txt
 ```
 
+### 🔒 セキュリティ設定（重要）
+
+#### APIキーの管理
+1. **環境変数ファイルの作成**:
+   ```bash
+   # env_example.txtを.envにコピー
+   cp env_example.txt .env
+   ```
+
+2. **APIキーの設定**:
+   `.env`ファイルを編集して実際のAPIキーを設定:
+   ```env
+   OPENAI_API_KEY=your_actual_openai_api_key
+   ANTHROPIC_API_KEY=your_actual_anthropic_api_key
+   GOOGLE_API_KEY=your_actual_google_api_key
+   ```
+
+3. **設定ファイルからAPIキーを削除**:
+   ```bash
+   python clear_api_keys.py
+   ```
+
+#### セキュリティチェック
+- `.env`ファイルが`.gitignore`に含まれていることを確認
+- 設定ファイルにAPIキーが保存されていないことを確認
+
 ### アプリケーション起動
 ```bash
 cd streamlit-pyaudio-voice-record

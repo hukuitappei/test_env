@@ -1,6 +1,10 @@
 import streamlit as st
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+
+# 環境変数を読み込み
+load_dotenv()
 
 # 新機能のインポート
 from utils.voice_commands import create_voice_command_processor

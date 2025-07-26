@@ -298,14 +298,32 @@ def render_llm_settings_tab(settings: Dict[str, Any]) -> Dict[str, Any]:
     
     with col2:
         if settings['llm']['enabled']:
-            # APIキー入力
-            api_key = st.text_input(
-                "APIキー",
-                value=settings['llm']['api_key'],
-                type="password",
-                help="LLMサービス用のAPIキー"
-            )
-            settings['llm']['api_key'] = api_key
+            # 環境変数の確認
+            env_api_key = os.getenv(f"{settings['llm']['provider'].upper()}_API_KEY", "")
+            if env_api_key:
+                st.success(f"✅ 環境変数 {settings['llm']['provider'].upper()}_API_KEY が設定されています")
+                st.info("💡 環境変数が設定されている場合、設定ファイルのAPIキーは無視されます")
+            else:
+                st.warning(f"⚠️ 環境変数 {settings['llm']['provider'].upper()}_API_KEY が設定されていません")
+                st.info("💡 セキュリティのため、.envファイルで環境変数を設定することを推奨します")
+            
+            # APIキー入力（環境変数がない場合のみ表示）
+            if not env_api_key:
+                api_key = st.text_input(
+                    "APIキー（非推奨）",
+                    value=settings['llm']['api_key'],
+                    type="password",
+                    help="LLMサービス用のAPIキー（環境変数の使用を推奨）"
+                )
+                settings['llm']['api_key'] = api_key
+            else:
+                # 環境変数が設定されている場合は表示のみ
+                st.text_input(
+                    "APIキー",
+                    value="***環境変数から取得***",
+                    disabled=True,
+                    help="環境変数から取得されています"
+                )
             
             # 温度設定
             temperature = st.slider(
@@ -330,15 +348,21 @@ def render_llm_settings_tab(settings: Dict[str, Any]) -> Dict[str, Any]:
             settings['llm']['max_tokens'] = max_tokens
     
     # APIキーテスト
-    if settings['llm']['enabled'] and settings['llm']['api_key']:
+    if settings['llm']['enabled']:
         st.markdown("---")
         st.markdown("#### 🧪 APIキーテスト")
         
-        if st.button("🔍 APIキーをテスト", key=f"test_api_key_{settings['llm']['provider']}_{settings['llm']['model']}"):
-            if test_api_key(settings['llm']['provider'], settings['llm']['api_key'], settings['llm']['model']):
-                st.success("✅ APIキーテスト成功！")
-            else:
-                st.error("❌ APIキーテスト失敗")
+        # テスト用のAPIキーを取得
+        test_api_key_value = env_api_key if env_api_key else settings['llm']['api_key']
+        
+        if test_api_key_value:
+            if st.button("🔍 APIキーをテスト", key=f"test_api_key_{settings['llm']['provider']}_{settings['llm']['model']}"):
+                if test_api_key(settings['llm']['provider'], test_api_key_value, settings['llm']['model']):
+                    st.success("✅ APIキーテスト成功！")
+                else:
+                    st.error("❌ APIキーテスト失敗")
+        else:
+            st.warning("⚠️ APIキーが設定されていません")
     
     return settings
 
